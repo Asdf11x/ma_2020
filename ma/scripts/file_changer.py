@@ -1,37 +1,23 @@
 # 03.02.2020 - File changer to rename files
 
-output = ""
+counter = 0
 
-f1 = open("test_video_list.txt", "r")
-f2 = open("video_segments.txt", "r")
-for line1 in f1:
-    for line2 in f2:
-        if line1[:11] == line2[:11]:
-            print("SAME-----------------------------------------")
-        else:
-            print(line1 + line2)
-        break
-f1.close()
-f2.close()
-"""
-with open('test_video_list.txt', 'r') as file1:
-    with open('video_segments.txt', 'r') as file2:
-        for line in file1:
-            print(line[:11])
-            for check_line in file2:
-                print(check_line[:11])
-                if line[:11] == check_line[:11]:
-                    line = line.split()
-                    check_line = check_line.split()
-                    print(line)
+file1 = open("test_video_list.txt", "r")
+file2 = open("test_segments.txt", "r")
+file3 = open("file3.txt", "w")
+file1.seek(0, 0)
+file2.seek(0, 0)
+list1 = file1.readlines()
+list2 = file2.readlines()
+for i in list1:
+    for j in list2:
+        if i[:11] == j[:11]:
 
-        same = set(file1).intersection(file2)
+            counter += 1
 
-same.discard('\n')
+            # take name from i and remaing information from j
+            j_split = j.split()
 
-with open('some_output_file.txt', 'w') as file_out:
-    for line in same:
-        file_out.write(line)
-"""
+            file3.write(str(j_split[0]) + ".mp4" + " " + str(i) + ".mp4" + " " + str(j_split[2]) + " " + str(j_split[3]) + "\n")
 
-print("finish")
+print("Found %s entries. Finish " %counter)
