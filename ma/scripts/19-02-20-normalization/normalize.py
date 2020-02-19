@@ -66,6 +66,8 @@ class Normalize:
             for k in keys:
                 x_all = []
                 y_all = []
+                x_all_T = []
+                y_all_T = []
                 for file in json_files:
                     # set file for class
                     x, y = self.get_points(data_folder / subdir, file, k)
