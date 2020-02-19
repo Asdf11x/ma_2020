@@ -1,14 +1,15 @@
-# 2d_vis.py: Create a visualization of 2d keypoints
-# read in a json file and visualize pose, face and hands
-# Paths - should be the folder where Open Pose JSON output was stored
+"""2d_vis.py: Create a visualization of 2d keypoints
+read in a json file and visualize pose, face and hands
+Paths - should be the folder where Open Pose JSON output was stored"""
 
-import numpy as np
-import os
-import cv2
 import json
-from cv2 import LINE_AA
+import math
+import cv2
 import matplotlib.colors as mcolors
-import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from cv2 import LINE_AA
+import os
 
 
 class JSONVis:
@@ -18,24 +19,52 @@ class JSONVis:
         self.height = height
         self.FPS = FPS
         self.path_to_json = path_to_json_dir
+
+        if not os.path.exists(path_to_json_dir + "\\output\\"):
+            os.makedirs(path_to_json_dir + "\\output\\")
+        self.path_to_output = path_to_json_dir + "\\output\\"
+
+        self.middle_finger_history = []
         self.json_files = [pos_json for pos_json in os.listdir(self.path_to_json) if pos_json.endswith('.json')]
         print('Found: %d json keypoint frame files in folder %s' % (len(self.json_files), self.path_to_json))
 
-    def get_points(self, key):
-        # for file in json_files:
+        self.dist_thumb = []
+        self.confidences = {"conf_face": [], "conf_pose": [], "conf_hand_l": [], "conf_hand_r": []}
+        self.finger_points_colors = {"thumb": "salmon", "index_finger": "goldenrod", "middle_finger": "springgreen",
+                                     "ring_finger": "navy", "little_finger": "darkviolet"}
+        self.finger_length_r = {"thumb": [], "index_finger": [], "middle_finger": [],
+                                "ring_finger": [], "little_finger": []}
+        self.finger_length_l = {"thumb": [], "index_finger": [], "middle_finger": [],
+                                "ring_finger": [], "little_finger": []}
+        self.finger_length = {"right": self.finger_length_r, "left": self.finger_length_l}
+
+    def get_points(self, key, file=None):
         temp_df = json.load(open(self.path_to_json + self.file))
+        if file is not None:
+            temp_df = json.load(open(self.path_to_json + file))
         temp_x_pose = temp_df['people'][0][key][0::3]
         temp_y_pose = temp_df['people'][0][key][1::3]
         return [temp_x_pose, temp_y_pose]
 
-    def get_confidence(self, key):
+    def get_confidence(self, key_file, file=None):
+        """
+        Get the confidence of one json file of a specific key_file
+        :param key_file: the specific key of a json file
+        :param file: a json file the confidence of a key is computed
+        :return: mean confidence of all values of a key in a certain file, whole array of all confidence values
+        """
         temp_df = json.load(open(self.path_to_json + self.file))
-        temp_conf = temp_df['people'][0][key][2::3]
+        if file is not None:
+            temp_df = json.load(open(self.path_to_json + file))
+        temp_conf = temp_df['people'][0][key_file][2::3]
         return np.mean(temp_conf), temp_conf
 
     def cl(self, str):
-        # getting color range 0 to 255
-        # Its not rgb (red, green, blue) here, but b,g,r (blue, green, red)
+        """
+        Get color on range 0 to 255. Its not rgb (red, green, blue) here, but b,g,r (blue, green, red)
+        :param str: name of the needed color
+        :return: scalar color code (blue, green, red)
+        """
         switched_colors = np.array(mcolors.to_rgb(str)).dot(255)
         switched_colors = np.array([switched_colors[2], switched_colors[1], switched_colors[0]])
         return switched_colors
@@ -88,7 +117,6 @@ class JSONVis:
                 cv2.line(frame, (joints_x[idx], joints_y[idx]), (joints_x[idx + 1], joints_y[idx + 1]), self.cl("lime"),
                          3, LINE_AA)
 
-
         # Currently removed visualization of legs
         # right leg
         """joints_x = xs[8:12]
@@ -125,7 +153,7 @@ class JSONVis:
         ys = [int(i) for i in points[1]]
         poly = np.array([xs, ys]).T.tolist()
 
-        # shape
+        # face shape
         cv2.polylines(frame, np.int32([poly[0:16]]), 0, self.cl("white"), thickness)
         # right eye brow
         cv2.polylines(frame, np.int32([poly[17:21]]), 0, self.cl("white"), thickness)
@@ -143,39 +171,81 @@ class JSONVis:
         cv2.polylines(frame, np.int32([poly[60:67]]), 1, self.cl("white"), thickness)
         return frame
 
-    def draw_hand(self, frame, key, thickness, idx):
-        points = self.get_points(key)
-        confidence = self.get_confidence(key)[0]
-        conf_array = self.get_confidence(key)[1]
+    def dist(self, p1, p2):
+        return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
 
-        if confidence > 0.2:
-            xs = [int(i) for i in points[0]]
-            ys = [int(i) for i in points[1]]
-            poly = np.array([xs, ys]).T.tolist()
+    def draw_hand(self, frame, key_file, thickness, idx, file=None):
+        points = self.get_points(key_file, file)
+        confidence = self.get_confidence(key_file, file)[0]
+        conf_array = self.get_confidence(key_file, file)[1]
+        # print(conf_array)
+        # confidence levels to show hands or single fingers, same levels for left and right hand are used
+        confidence_overall = 0.09
+        confidence_each_finger = 0.2
+        max_finger_length = 230
 
-            # thumb
-            if np.mean(conf_array[0:5]) > 0.2:
-                cv2.polylines(frame, np.int32([poly[0:5]]), 0, self.cl("salmon"), thickness)
-            # index finger
-            if np.mean(conf_array[5:9]) > 0.2:
-                cv2.polylines(frame, np.int32([[poly[0], poly[5]]]), 0, self.cl("goldenrod"), thickness)
-                cv2.polylines(frame, np.int32([poly[5:9]]), 0, self.cl("goldenrod"), thickness)
-            # middle finger
-            if np.mean(conf_array[9:13]) > 0.2:
-                cv2.polylines(frame, np.int32([[poly[0], poly[9]]]), 0, self.cl("springgreen"), thickness)
-                cv2.polylines(frame, np.int32([poly[9:13]]), 0, self.cl("springgreen"), thickness)
-            # ring finger
-            if np.mean(conf_array[13:17]) > 0.2:
-                cv2.polylines(frame, np.int32([[poly[0], poly[13]]]), 0, self.cl("navy"), thickness)
-                cv2.polylines(frame, np.int32([poly[13:17]]), 0, self.cl("navy"), thickness)
-            # little finger
-            if np.mean(conf_array[17:21]) > 0.2:
-                cv2.polylines(frame, np.int32([[poly[0], poly[17]]]), 0, self.cl("darkviolet"), thickness)
-                cv2.polylines(frame, np.int32([poly[17:21]]), 0, self.cl("darkviolet"), thickness)
+        # use finger points for computing the length of the fingers
+        finger_points = {}
+        finger_confidence = {}
+
+        # obtain joint positions
+        xs = [int(i) for i in points[0]]
+        ys = [int(i) for i in points[1]]
+        poly = np.array([xs, ys]).T.tolist()
+
+        # Fill dictionary with finger joint points, used this points
+        # https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/output.md#hand-output-format
+
+        # thumb
+        finger_points["thumb"] = poly[0:5]
+        finger_confidence["thumb"] = conf_array[0:5]
+        # index
+        # Counts for the other finger as well, added joints to dictionary differently so it stay in  pairs
+        finger_points["index_finger"] = [poly[0]]
+        finger_points["index_finger"].extend([poly[5]])
+        finger_points["index_finger"].extend(poly[5:9])
+        finger_confidence["index_finger"] = conf_array[5:9]
+        # middle
+        finger_points["middle_finger"] = [poly[0]]
+        finger_points["middle_finger"].extend([poly[9]])
+        finger_points["middle_finger"].extend(poly[9:13])
+        finger_confidence["middle_finger"] = conf_array[9:13]
+        # ring
+        finger_points["ring_finger"] = [poly[0]]
+        finger_points["ring_finger"].extend([poly[13]])
+        finger_points["ring_finger"].extend(poly[13:17])
+        finger_confidence["ring_finger"] = conf_array[13:17]
+
+        # little
+        finger_points["little_finger"] = [poly[0]]
+        finger_points["little_finger"].extend([poly[17]])
+        finger_points["little_finger"].extend(poly[17:21])
+        finger_confidence["little_finger"] = conf_array[17:21]
+
+        # calculate length of fingers and write them into dictionary for plotting
+        for key in finger_points:
+            total_dist = 0.0
+            for i in range(len(finger_points[key]) - 1):
+                # calculate length of fingers
+                total_dist += self.dist(finger_points[key][i], finger_points[key][i + 1])
+
+            # add length into dictionary with respect of side
+            if key_file == "hand_left_keypoints_2d":
+                self.finger_length_l[key].append(total_dist)
+            else:
+                self.finger_length_r[key].append(total_dist)
+
+            # show finger if confidence is higher than threshold
+            if confidence > confidence_overall:
+                if np.mean(finger_confidence[key]) > confidence_each_finger and total_dist < max_finger_length:
+                    cv2.polylines(frame, np.int32([finger_points[key]]), 0, self.cl(self.finger_points_colors[key]),
+                                  thickness)
+
         else:
-            print("too low at %d and %s" % (idx, key[:10]))
-            
-        if confidence > 0.2:
+            pass
+            # print("Confidence overall lower than  %d at frame %d - hand: %s" % (confidence_overall, idx, str(key[:10]).split("_")[1]))
+
+        if confidence > 0.0:
             new_frame = frame
             return new_frame
         else:
@@ -183,34 +253,160 @@ class JSONVis:
 
     def draw_main(self):
         fourcc = cv2.VideoWriter_fourcc(*'MP42')
-        video = cv2.VideoWriter('./json_vis.avi', fourcc, float(self.FPS), (self.width, self.height))
+        video = cv2.VideoWriter(self.path_to_output + 'json_vis.avi', fourcc, float(self.FPS), (self.width, self.height))
         idx = 0
+        once = 1
 
-        for file in self.json_files[:500]:
+        for file in self.json_files:
+            # set file for class
             self.file = file
 
-            if self.get_confidence('hand_left_keypoints_2d')[0] > 0.1:
-                pass
+            # save first frame for left and right hand
+            if once == 1:
+                file_save_r = file
+                file_save_l = file
+                once = 0
 
-
+            # used for transparency
             blank_image = np.zeros((height, width, 3), np.uint8)
             blank_image_one = np.ones((height, width, 3), np.uint8)
             frame = self.draw_pose(blank_image_one, 'pose_keypoints_2d')
             alpha = 0.5  # Transparency factor.
             # Following line overlays transparent over the image
             frame = cv2.addWeighted(frame, alpha, blank_image, 1 - alpha, 0)
-
             frame = self.draw_face(frame, 'face_keypoints_2d', 1)
-            frame = self.draw_hand(frame, 'hand_left_keypoints_2d', 2, idx)
-            frame = self.draw_hand(frame, 'hand_right_keypoints_2d', 2, idx)
 
+            # try to display last frame when confidence is too low instead of not showing the frame
+            # conf is computed here only for the left hand
+            # conf level set to 0.0 (deactivated it) because it looks laggy
+            conf_hand_l = self.get_confidence('hand_left_keypoints_2d', file)[0]
+            conf_hand_r = self.get_confidence('hand_right_keypoints_2d', file)[0]
+
+            if conf_hand_l > 0.0:
+                frame = self.draw_hand(frame, 'hand_left_keypoints_2d', 2, idx, file)
+                file_save_l = file
+            else:
+                frame = self.draw_hand(frame, 'hand_left_keypoints_2d', 2, idx, file_save_l)
+
+            if conf_hand_r > 0.0:
+                frame = self.draw_hand(frame, 'hand_right_keypoints_2d', 2, idx, file)
+                file_save_r = file
+            else:
+                frame = self.draw_hand(frame, 'hand_right_keypoints_2d', 2, idx, file_save_r)
+
+            # write index on frames
+            cv2.putText(frame, str(idx), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255))
             video.write(frame)
 
+            """ 
+            # helper function to visualize when setting max finger length
+            # how frames when fingers are longer than threshold
+            max_finger_length = 250
+            for side in self.finger_length:
+                for key in self.finger_length[side]:
+                    self.write_file(frame, key, idx, side, max_finger_length)
+            """
+
+            # show computing status in console
             if idx % 100 == 0:
                 print("Frame: %d of %d" % (idx, len(self.json_files)))
-
+            self.fill_plotter_data(file)
             idx += 1
+
+        self.plot_data()
         video.release()
+
+    def write_file(self, frame, key, idx, side, threshold_length):
+        save_img_path = "C:\\Uni\Master\\41_Master_Thesis\\1_Vorbereitung-MA\\ML-VL-Recap\\python\\" \
+                        "Uebungen\\random_pytorch_examples\\february\\finger_pictures\\"
+
+        os.chdir(save_img_path)
+        new_path = "over_" + str(threshold_length) + "\\" + side + "\\"
+        if not os.path.exists(new_path):
+            os.makedirs(new_path)
+        if self.finger_length[side][key][idx] > threshold_length:
+            # print("%s %s length more than %d in frame: %d" % (side, key, threshold_length, idx))
+            cv2.imwrite(save_img_path + "over_" + str(threshold_length) + "\\" + side + "\\" + side + "_" +
+                        str(key) + "_over-" + str(threshold_length) + "_frame-" + str(idx) + ".jpg", frame)
+
+    def plot_data(self):
+
+        if not os.path.exists(self.path_to_output + "\\plots\\"):
+            os.makedirs(self.path_to_output + "\\plots\\")
+
+        path_to_plots = self.path_to_output + "\\plots\\"
+
+        plt.figure(1)
+        plt.figure(figsize=(12, 7.2))
+        ax1 = plt.subplot(211)
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        plt.plot(self.confidences['conf_face'], label='face')
+        plt.ylabel('Confidences')
+        plt.legend()
+        ax2 = plt.subplot(212, sharex=ax1)
+        plt.plot(self.confidences['conf_pose'], label='pose', color="tab:orange")
+        plt.legend()
+        plt.ylabel('Confidences')
+        plt.xlabel('Frames')
+        plt.savefig(path_to_plots + 'confidences-face-pose.png')
+
+        plt.figure(2)
+        plt.figure(figsize=(12, 7.2))
+        ax1 = plt.subplot(211)
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        plt.plot(self.confidences['conf_hand_l'], label='hand left')
+        plt.legend()
+        plt.ylabel('Confidences')
+        ax2 = plt.subplot(212, sharex=ax1)
+        plt.plot(self.confidences['conf_hand_r'], label='hand right', color="tab:orange")
+        plt.legend()
+        plt.ylabel('Confidences')
+        plt.xlabel('Frames')
+
+        plt.savefig(path_to_plots + 'confidences-hands.png')
+
+        plt.figure(3)
+        self.plot_finger_length("thumb", path_to_plots)
+
+        plt.figure(4)
+        self.plot_finger_length("index_finger", path_to_plots)
+
+        plt.figure(5)
+        self.plot_finger_length("middle_finger", path_to_plots)
+
+        plt.figure(6)
+        self.plot_finger_length("ring_finger", path_to_plots)
+
+        plt.figure(7)
+        self.plot_finger_length("little_finger", path_to_plots)
+
+        plt.show()
+
+    def plot_finger_length(self, label, path_to_plots):
+        plt.figure(figsize=(12, 7.2))
+        ax1 = plt.subplot(211)
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        plt.plot(self.finger_length_l[label], label=label + '_length_l')
+        y_mean = [np.mean(self.finger_length_l[label])] * len(self.finger_length_l[label])
+        plt.plot(y_mean, label=label + 'avg_length_l')
+        plt.legend()
+        plt.ylabel('Length')
+        ax2 = plt.subplot(212, sharex=ax1)
+        plt.plot(self.finger_length_r[label], label=label + '_length_r', color="tab:green")
+        y_mean = [np.mean(self.finger_length_r[label])] * len(self.finger_length_r[label])
+        plt.plot(y_mean, label=label + '_mean_length_r', color="tab:red")
+        plt.legend()
+        plt.xlabel('Frames')
+        plt.ylabel('Length')
+
+        plt.savefig(path_to_plots + "lengths-" + label + ".png")
+
+    def fill_plotter_data(self, file):
+        # get confidences and add them to a dictionary
+        self.confidences['conf_face'].append(self.get_confidence('face_keypoints_2d', file)[0])
+        self.confidences['conf_pose'].append(self.get_confidence('pose_keypoints_2d', file)[0])
+        self.confidences['conf_hand_l'].append(self.get_confidence('hand_left_keypoints_2d', file)[0])
+        self.confidences['conf_hand_r'].append(self.get_confidence('hand_right_keypoints_2d', file)[0])
 
 
 if __name__ == '__main__':
