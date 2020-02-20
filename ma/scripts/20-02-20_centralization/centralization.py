@@ -19,3 +19,7 @@ Finally set X_n, Y_n to 0
 
 """
 
+class Normalize:
+
+    def __init__(self, path_to_json_dir):
+        self.path_to_json = path_to_json_dir
