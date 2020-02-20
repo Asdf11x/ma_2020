@@ -26,7 +26,6 @@ class Normalize:
         self.path_to_json = path_to_json_dir
 
     def main_normalize(self):
-        print("Start to copy files...")
         self.normalize()
 
     def normalize(self):
@@ -34,19 +33,23 @@ class Normalize:
         os.walk(self.path_to_json)
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
         data_folder = Path(self.path_to_json)
+        subdirectories = subdirectories[0]
 
         # if there are folders with "_normalized" dont create again
-        subdirectories = [s for s in subdirectories[0] if "_normalized" not in s]
+        # TODO: make in one line
+        subdirectories = [s for s in subdirectories if "_normalized" not in s]
+        subdirectories = [s for s in subdirectories if "_centralized" not in s]
+
         for subdir in subdirectories:
-            if not os.path.exists(data_folder / str(subdir + "_normalized")):
-                os.makedirs(data_folder / str(subdir + "_normalized"))
+            if not os.path.exists(data_folder / str(subdir + "_centralized")):
+                # print("Create %s" %str(data_folder / str(subdir + "_centralized")))
+                os.makedirs(data_folder / str(subdir + "_centralized"))
 
         # used keys of openpose here
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         folder_mean_stddev = {'pose_keypoints_2d': [], 'face_keypoints_2d': [], 'hand_left_keypoints_2d': [],
                               'hand_right_keypoints_2d': []}
         all_mean_stddev = {}
-
         # get mean and stddev of whole folder and write it into a dictionary
         # the dictionary contains for each key the mean and stddev for x and y of the whole folder:
         # folder_name - key - 0 - 0: array of x_mean
