@@ -16,6 +16,10 @@ import sys
 # import sys
 # import numpy
 # numpy.set_printoptions(threshold=sys.maxsize)
+
+import time
+
+
 class Normalize:
 
     def __init__(self, path_to_json_dir):
@@ -234,6 +238,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy"
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
     norm = Normalize(path_to_json_dir)
+    start_time = time.time()
     norm.main_normalize()
+    print("--- %s seconds ---" % (time.time() - start_time))
+
