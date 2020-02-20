@@ -10,9 +10,14 @@ normalize.py
 Computed all mean and stddev. Normalizing...
 --- 286.95783400535583 seconds ---
 
+normalize_no_copy.py
+Computed all mean and stddev. Normalizing...
+--- 229.11244106292725 seconds ---
+
 normalize_quicker.py
 Computed all mean and stddev. Normalizing...
 --- 26.050049543380737 seconds ---
+
 
 Check for same results of normalize.py and normalize_quicker.py:
 

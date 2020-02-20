@@ -7,17 +7,14 @@ write normalized values into json file in folder_name_normalized
 """
 
 import json
+import time
+
 import numpy as np
 import os
 import statistics
 from distutils.dir_util import copy_tree
 from pathlib import Path
 import sys
-# import sys
-# import numpy
-# numpy.set_printoptions(threshold=sys.maxsize)
-
-import time
 
 
 class Normalize:
@@ -27,19 +24,38 @@ class Normalize:
 
     def main_normalize(self):
         print("Start to copy files...")
+        # self.copy_files()
         self.normalize()
 
-    def normalize(self):
-        # get subdirectories of the path
+    def copy_files(self):
+        # copy
         os.walk(self.path_to_json)
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
         data_folder = Path(self.path_to_json)
-
-        # if there are folders with "_normalized" dont create again
-        subdirectories = [s for s in subdirectories[0] if "_normalized" not in s]
-        for subdir in subdirectories:
+        # if there are folders with "_normalized" dont copy them again
+        subdirectories_copy = [s for s in subdirectories[0] if "_normalized" not in s]
+        for subdir in subdirectories_copy:
             if not os.path.exists(data_folder / str(subdir + "_normalized")):
                 os.makedirs(data_folder / str(subdir + "_normalized"))
+            copy_tree(str(data_folder / subdir), str(data_folder / str(subdir + "_normalized")))
+
+            print("Copied files from %s to %s" % (
+            str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
+
+    def normalize(self):
+        # copy
+        os.walk(self.path_to_json)
+        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
+        data_folder = Path(self.path_to_json)
+        # if there are folders with "_normalized" dont copy them again
+        subdirectories_copy = [s for s in subdirectories[0] if "_normalized" not in s]
+        for subdir in subdirectories_copy:
+            if not os.path.exists(data_folder / str(subdir + "_normalized")):
+                os.makedirs(data_folder / str(subdir + "_normalized"))
+            # copy_tree(str(data_folder / subdir), str(data_folder / str(subdir + "_normalized")))
+
+            print("Copied files from %s to %s" % (
+            str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
 
         # used keys of openpose here
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
@@ -47,61 +63,54 @@ class Normalize:
                               'hand_right_keypoints_2d': []}
         all_mean_stddev = {}
 
+        # work
+        os.walk(self.path_to_json)
+        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
+        data_folder = Path(self.path_to_json)
+        # if there are folders with "_normalized" use em for working directories
+        subdirectories_work = [s for s in subdirectories[0] if "_normalized" in s]
+
         # get mean and stddev of whole folder and write it into a dictionary
         # the dictionary contains for each key the mean and stddev for x and y of the whole folder:
         # folder_name - key - 0 - 0: array of x_mean
         # folder_name - key - 0 - 1: array of x_stddev
         # folder_name - key - 1 - 0: array of y_mean
         # folder_name - key - 1 - 1: array of y_stddev
-        for subdir in subdirectories:
+        for subdir in subdirectories_copy:
             print("Computing mean and stddev for %s" % (subdir))
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
-            all_files = {}
-            folder_mean_stddev = {}
-            dic_helper = {}
-
-            # load files from one folder into dictionary
-            for file in json_files:
-                temp_df = json.load(open(data_folder / subdir / file))
-                all_files[file] = {}
-                dic_helper[file] = {}
-
-                # init dictionaries
-                for k in keys:
-                    dic_helper[file][k] = []
-                    all_files[file][k] = {'x': [], 'y': []}
-
-                # write x, y values into dictionary
-                for k in keys:
-                    all_files[file][k]['x'].append(temp_df['people'][0][k][0::3])
-                    all_files[file][k]['y'].append(temp_df['people'][0][k][1::3])
-
-            # get mean and stddev per key
+            idx = 0
             for k in keys:
-                file_x_l = []
-                file_y_l = []
-                mean_stddev_x = []
-                mean_stddev_y = []
-                for file in all_files.keys():
-                    file_x_l.extend(all_files[file][k]['x'])
-                    file_y_l.extend(all_files[file][k]['y'])
-                file_x_l_T = np.array(file_x_l).T.tolist()
-                file_y_l_T = np.array(file_y_l).T.tolist()
+                x_all = []
+                y_all = []
+                x_all_T = []
+                y_all_T = []
+                for file in json_files:
+                    # print(file)
+                    # set file for class
+                    x, y = self.get_points(data_folder / subdir, file, k)
 
-                for idx in range(len(file_x_l_T)):
-                    mean_stddev_x.append([np.mean(file_x_l_T[idx]), statistics.stdev(file_x_l_T[idx])])
-                    mean_stddev_y.append([np.mean(file_y_l_T[idx]), statistics.stdev(file_y_l_T[idx])])
+                    x_all.append(x)
+                    y_all.append(y)
 
-                folder_mean_stddev[k] = [np.array(mean_stddev_x).T.tolist(), np.array(mean_stddev_y).T.tolist()]
-            # copy mean and stddev per folder into a dictionary, so all_mean_stddev has all mean & stddevs of all folders
-            # per folder one json file
+                    x_all_T = np.array(x_all).T.tolist()
+                    y_all_T = np.array(y_all).T.tolist()
+                    # print(x_all_T)
+                # if idx % 500 == 0:
+                #     print("%s file : %d of %d" % (file, idx, len(json_files)))
+                # idx += 1
+
+                # fill dictionary for each folder with y/x_mean, y/x_stddev
+                folder_mean_stddev[k] = [self.get_mean_stddev(x_all_T), self.get_mean_stddev(y_all_T)]
+            print(folder_mean_stddev)
+            # print(folder_mean_stddev)
             all_mean_stddev[subdir] = folder_mean_stddev.copy()
 
         print("Computed all mean and stddev. Normalizing...")
 
         # use mean and stddev from above to compute values for the json files
-        for subdir in subdirectories:
+        for subdir in subdirectories_copy:
             folder_mean_stddev = all_mean_stddev[subdir]
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
@@ -152,6 +161,36 @@ class Normalize:
                 jsonFile = open(data_folder / str(subdir + "_normalized") / file, "w+")
                 jsonFile.write(json.dumps(data))
                 jsonFile.close()
+
+    def get_points(self, path, file, key):
+        temp_df = json.load(open(path / file))
+        temp_x_pose = temp_df['people'][0][key][0::3]
+        temp_y_pose = temp_df['people'][0][key][1::3]
+        return [temp_x_pose, temp_y_pose]
+
+    def get_mean_stddev(self, values):
+        means = []
+        std_devs = []
+        for array in values:
+            # print(array)
+            means.append(np.mean(array))
+            std_devs.append(statistics.stdev(array))
+        return [means, std_devs]
+
+    def compute_normalization(self, values):
+        result = []
+        for array in values:
+            # print(array)
+            mean = np.mean(array)
+            std_dev = statistics.stdev(array)
+            helper_array = []
+            for element in array:
+                if std_dev != 0:
+                    helper_array.append((element - mean) / std_dev)
+                else:
+                    helper_array.append(element)
+            result.append(helper_array)
+        return result
 
 
 if __name__ == '__main__':
