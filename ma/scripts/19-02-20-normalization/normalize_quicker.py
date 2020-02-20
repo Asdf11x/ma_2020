@@ -90,18 +90,19 @@ class Normalize:
                 # x_all: has all x values from the whole folder
 
                 for k in keys:
-                    pass
-                    # print(k)
                     all_files[file][k]['x'].append(temp_df['people'][0][k][0::3])
+                    all_files[file][k]['y'].append(temp_df['people'][0][k][1::3])
                     # y_all = all_files[file]['people'][0][k][1::3]
 
             # all_x = all_files.copy()
-            print(all_files)
+            # print(all_files)
             file_x_per_key = []
             for k in keys:
-                print(k)
+                # print(k)
                 file_x_l = []
-                mean_stddev = []
+                file_y_l = []
+                mean_stddev_x = []
+                mean_stddev_y = []
                 filler = []
                 # print(all_files)  # das array passt, hat alle dateien und alles ind er richtigen reihenfolge
                 for file in all_files.keys():
@@ -111,64 +112,22 @@ class Normalize:
                     # for element in range(len(all_files[file][k]['x'])):
                     #     print(all_files[file][k]['x'][element])
                     file_x_l.extend(all_files[file][k]['x'])
+                    file_y_l.extend(all_files[file][k]['y'])
 
                 file_x_l_T = np.array(file_x_l).T.tolist()
+                file_y_l_T = np.array(file_y_l).T.tolist()
                 # print(file_x_l_T)
-                for element in file_x_l_T:
-                    mean_stddev.append([np.mean(element), statistics.stdev(element)])
+                for idx in range(len(file_x_l_T)):
+                    mean_stddev_x.append([np.mean(file_x_l_T[idx]), statistics.stdev(file_x_l_T[idx])])
+                    mean_stddev_y.append([np.mean(file_y_l_T[idx]), statistics.stdev(file_y_l_T[idx])])
                 # file_x_per_key.append(mean_std)
                 # print(mean_stddev) # die will ich, pro array mean berechnen, das sieht gut aus
 
-                filler = file_x_l_T = np.array(mean_stddev).T.tolist()
-                folder_mean_stddev[k] = filler
-                print(folder_mean_stddev)
-                # for element in mean_stddev:
-                #     filler[0].extend(element[0])
-                #     filler[1].extend(element[1])
-                # print(filler)
-
-                # for file in json_files:
-                #     # print(file)
-                #     for k in keys:
-                #         pass
-                        # all_x[file][k] = file_x_per_key
-
-            #
-            #     print(np.array(file_x_l).T.tolist())
-            # with open('data.json', 'w') as fp:
-            #     json.dump(all_x, fp)
-            # print(all_x)
-            # print("he")
-            # np.savetxt("test.txt", all_x)
-
-
-                # for idx in range(len(all_files[file][k]['x'])):
-                #     pass
-
-            # print(all_x)
-
-        """
-            all_mean_stddev[subdir] = folder_mean_stddev.copy()
-                    # print(file)
-                    # set file for class
-                    x, y = self.get_points(data_folder / subdir, file, k)
-
-                    x_all.append(x)
-                    y_all.append(y)
-
-                    x_all_T = np.array(x_all).T.tolist()
-                    y_all_T = np.array(y_all).T.tolist()
-                    print(x_all_T)
-                if idx % 500 == 0:
-                    print("%s file : %d of %d" % (file, idx, len(json_files)))
-                idx += 1
-
-            for k in keys:
-                # fill dictionary for each folder with y/x_mean, y/x_stddev
-                folder_mean_stddev[k] = [self.get_mean_stddev(x_all_T), self.get_mean_stddev(y_all_T)]
+                filler = np.array(mean_stddev_x).T.tolist()
+                folder_mean_stddev[k] = [np.array(mean_stddev_x).T.tolist(), np.array(mean_stddev_y).T.tolist()]
             print(folder_mean_stddev)
             all_mean_stddev[subdir] = folder_mean_stddev.copy()
-
+            # # # ## # # # # ## # #
         print("Computed all mean and stddev. Normalizing...")
 
         # use mean and stddev from above to compute values for the json files
@@ -223,7 +182,7 @@ class Normalize:
                 jsonFile = open(data_folder / subdir / file, "w+")
                 jsonFile.write(json.dumps(data))
                 jsonFile.close()
-"""
+
 
     def get_points(self, path, file, key):
         temp_df = json.load(open(path / file))
