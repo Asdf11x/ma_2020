@@ -13,8 +13,9 @@ import statistics
 from distutils.dir_util import copy_tree
 from pathlib import Path
 import sys
-
-
+# import sys
+# import numpy
+# numpy.set_printoptions(threshold=sys.maxsize)
 class Normalize:
 
     def __init__(self, path_to_json_dir):
@@ -37,7 +38,8 @@ class Normalize:
                 os.makedirs(data_folder / str(subdir + "_normalized"))
             copy_tree(str(data_folder / subdir), str(data_folder / str(subdir + "_normalized")))
 
-            print("Copied files from %s to %s" % (str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
+            print("Copied files from %s to %s" % (
+            str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
 
     def normalize(self):
         # used keys of openpose here
@@ -59,17 +61,94 @@ class Normalize:
         # folder_name - key - 0 - 1: array of x_stddev
         # folder_name - key - 1 - 0: array of y_mean
         # folder_name - key - 1 - 1: array of y_stddev
+
+        y_all = []
+        all_files = {}
+        helper_d = {}
         for subdir in subdirectories_work:
-            print("Computing mean and stddev for %s" %(subdir))
+            print("Computing mean and stddev for %s" % (subdir))
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
-            idx = 0
+            all_files = {}
+            x_files = []
+            y_files = []
+            folder_mean_stddev = {}
+            dic_helper = {}
+            once = 1
+            for file in json_files:
+                temp_df = json.load(open(data_folder / subdir / file))
+                # all_keys = {'x': [], 'y': []}
+                # dict([(i, locals()[i]) for i in keys])
+                all_files[file] = {}
+                dic_helper[file] = {}
+                for k in keys:
+                    dic_helper[file][k] = []
+                    all_files[file][k] = {'x': [], 'y': []}
+                all_x = dic_helper.copy()
+                x_keys = []
+                y_keys = []
+                # x_all: has all x values from the whole folder
+
+                for k in keys:
+                    pass
+                    # print(k)
+                    all_files[file][k]['x'].append(temp_df['people'][0][k][0::3])
+                    # y_all = all_files[file]['people'][0][k][1::3]
+
+            # all_x = all_files.copy()
+            print(all_files)
+            file_x_per_key = []
             for k in keys:
-                x_all = []
-                y_all = []
-                x_all_T = []
-                y_all_T = []
-                for file in json_files:
+                print(k)
+                file_x_l = []
+                mean_stddev = []
+                filler = []
+                # print(all_files)  # das array passt, hat alle dateien und alles ind er richtigen reihenfolge
+                for file in all_files.keys():
+                    # print(all_files[file][k]['x'])
+
+                    # print("%s key, %s file," %(k, file))
+                    # for element in range(len(all_files[file][k]['x'])):
+                    #     print(all_files[file][k]['x'][element])
+                    file_x_l.extend(all_files[file][k]['x'])
+
+                file_x_l_T = np.array(file_x_l).T.tolist()
+                # print(file_x_l_T)
+                for element in file_x_l_T:
+                    mean_stddev.append([np.mean(element), statistics.stdev(element)])
+                # file_x_per_key.append(mean_std)
+                # print(mean_stddev) # die will ich, pro array mean berechnen, das sieht gut aus
+
+                filler = file_x_l_T = np.array(mean_stddev).T.tolist()
+                folder_mean_stddev[k] = filler
+                print(folder_mean_stddev)
+                # for element in mean_stddev:
+                #     filler[0].extend(element[0])
+                #     filler[1].extend(element[1])
+                # print(filler)
+
+                # for file in json_files:
+                #     # print(file)
+                #     for k in keys:
+                #         pass
+                        # all_x[file][k] = file_x_per_key
+
+            #
+            #     print(np.array(file_x_l).T.tolist())
+            # with open('data.json', 'w') as fp:
+            #     json.dump(all_x, fp)
+            # print(all_x)
+            # print("he")
+            # np.savetxt("test.txt", all_x)
+
+
+                # for idx in range(len(all_files[file][k]['x'])):
+                #     pass
+
+            # print(all_x)
+
+        """
+            all_mean_stddev[subdir] = folder_mean_stddev.copy()
                     # print(file)
                     # set file for class
                     x, y = self.get_points(data_folder / subdir, file, k)
@@ -79,15 +158,15 @@ class Normalize:
 
                     x_all_T = np.array(x_all).T.tolist()
                     y_all_T = np.array(y_all).T.tolist()
-                    # print(x_all_T)
-                # if idx % 500 == 0:
-                #     print("%s file : %d of %d" % (file, idx, len(json_files)))
-                # idx += 1
+                    print(x_all_T)
+                if idx % 500 == 0:
+                    print("%s file : %d of %d" % (file, idx, len(json_files)))
+                idx += 1
 
+            for k in keys:
                 # fill dictionary for each folder with y/x_mean, y/x_stddev
                 folder_mean_stddev[k] = [self.get_mean_stddev(x_all_T), self.get_mean_stddev(y_all_T)]
             print(folder_mean_stddev)
-            # print(folder_mean_stddev)
             all_mean_stddev[subdir] = folder_mean_stddev.copy()
 
         print("Computed all mean and stddev. Normalizing...")
@@ -144,6 +223,7 @@ class Normalize:
                 jsonFile = open(data_folder / subdir / file, "w+")
                 jsonFile.write(json.dumps(data))
                 jsonFile.close()
+"""
 
     def get_points(self, path, file, key):
         temp_df = json.load(open(path / file))
@@ -180,6 +260,6 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy_1"
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy"
     norm = Normalize(path_to_json_dir)
     norm.main_normalize()
