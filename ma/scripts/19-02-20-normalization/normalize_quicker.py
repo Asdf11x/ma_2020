@@ -125,9 +125,10 @@ class Normalize:
 
                 filler = np.array(mean_stddev_x).T.tolist()
                 folder_mean_stddev[k] = [np.array(mean_stddev_x).T.tolist(), np.array(mean_stddev_y).T.tolist()]
-            print(folder_mean_stddev)
+            # print(folder_mean_stddev)
             all_mean_stddev[subdir] = folder_mean_stddev.copy()
-            # # # ## # # # # ## # #
+            # # # # # # # # # # # # #
+
         print("Computed all mean and stddev. Normalizing...")
 
         # use mean and stddev from above to compute values for the json files
