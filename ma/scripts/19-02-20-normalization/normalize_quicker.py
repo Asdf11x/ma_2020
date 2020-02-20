@@ -23,7 +23,7 @@ class Normalize:
 
     def main_normalize(self):
         print("Start to copy files...")
-        self.copy_files()
+        # self.copy_files()
         self.normalize()
 
     def copy_files(self):
@@ -42,6 +42,20 @@ class Normalize:
             str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
 
     def normalize(self):
+        # copy
+        os.walk(self.path_to_json)
+        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
+        data_folder = Path(self.path_to_json)
+        # if there are folders with "_normalized" dont copy them again
+        subdirectories_copy = [s for s in subdirectories[0] if "_normalized" not in s]
+        for subdir in subdirectories_copy:
+            if not os.path.exists(data_folder / str(subdir + "_normalized")):
+                os.makedirs(data_folder / str(subdir + "_normalized"))
+            # copy_tree(str(data_folder / subdir), str(data_folder / str(subdir + "_normalized")))
+
+            print("Copied files from %s to %s" % (
+            str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
+
         # used keys of openpose here
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         folder_mean_stddev = {'pose_keypoints_2d': [], 'face_keypoints_2d': [], 'hand_left_keypoints_2d': [],
@@ -65,7 +79,7 @@ class Normalize:
         y_all = []
         all_files = {}
         helper_d = {}
-        for subdir in subdirectories_work:
+        for subdir in subdirectories_copy:
             print("Computing mean and stddev for %s" % (subdir))
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
@@ -132,7 +146,7 @@ class Normalize:
         print("Computed all mean and stddev. Normalizing...")
 
         # use mean and stddev from above to compute values for the json files
-        for subdir in subdirectories_work:
+        for subdir in subdirectories_copy:
             folder_mean_stddev = all_mean_stddev[subdir]
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
@@ -180,7 +194,7 @@ class Normalize:
                     data['people'][0][k] = values
 
                 # ## Save our changes to JSON file
-                jsonFile = open(data_folder / subdir / file, "w+")
+                jsonFile = open(data_folder / str(subdir + "_normalized") / file, "w+")
                 jsonFile.write(json.dumps(data))
                 jsonFile.close()
 
