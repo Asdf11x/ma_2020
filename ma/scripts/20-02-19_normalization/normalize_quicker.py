@@ -10,13 +10,8 @@ import json
 import numpy as np
 import os
 import statistics
-from distutils.dir_util import copy_tree
 from pathlib import Path
 import sys
-# import sys
-# import numpy
-# numpy.set_printoptions(threshold=sys.maxsize)
-
 import time
 
 
@@ -32,18 +27,18 @@ class Normalize:
         # get subdirectories of the path
         os.walk(self.path_to_json)
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
-        data_folder = Path(self.path_to_json)
+        data_dir_origin = Path(self.path_to_json)
         subdirectories = subdirectories[0]
 
-        # if there are folders with "_normalized" dont create again
-        # TODO: make in one line
-        subdirectories = [s for s in subdirectories if "_normalized" not in s]
-        subdirectories = [s for s in subdirectories if "_centralized" not in s]
+        # create new target directory, the centralized fiels will be saved there
+        if not os.path.exists(data_dir_origin.parent / str(data_dir_origin.name + "_normalized")):
+            os.makedirs(data_dir_origin.parent / str(data_dir_origin.name + "_normalized"))
+
+        data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_normalized")
 
         for subdir in subdirectories:
-            if not os.path.exists(data_folder / str(subdir + "_centralized")):
-                # print("Create %s" %str(data_folder / str(subdir + "_centralized")))
-                os.makedirs(data_folder / str(subdir + "_centralized"))
+            if not os.path.exists(data_dir_target / subdir):
+                os.makedirs(data_dir_target / subdir)
 
         # used keys of openpose here
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
@@ -58,7 +53,7 @@ class Normalize:
         # folder_name - key - 1 - 1: array of y_stddev
         for subdir in subdirectories:
             print("Computing mean and stddev for %s" % (subdir))
-            json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
+            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
                           if pos_json.endswith('.json')]
             all_files = {}
             folder_mean_stddev = {}
@@ -66,7 +61,7 @@ class Normalize:
 
             # load files from one folder into dictionary
             for file in json_files:
-                temp_df = json.load(open(data_folder / subdir / file))
+                temp_df = json.load(open(data_dir_origin / subdir / file))
                 all_files[file] = {}
                 dic_helper[file] = {}
 
@@ -106,11 +101,11 @@ class Normalize:
         # use mean and stddev from above to compute values for the json files
         for subdir in subdirectories:
             folder_mean_stddev = all_mean_stddev[subdir]
-            json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
+            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
                           if pos_json.endswith('.json')]
 
             for file in json_files:
-                jsonFile = open(data_folder / subdir / file, "r")  # Open the JSON file for reading
+                jsonFile = open(data_dir_origin / subdir / file, "r")  # Open the JSON file for reading
                 data = json.load(jsonFile)  # Read the JSON into the buffer
                 jsonFile.close()  # Close the JSON file
 
@@ -152,7 +147,7 @@ class Normalize:
                     data['people'][0][k] = values
 
                 # ## Save our changes to JSON file
-                jsonFile = open(data_folder / str(subdir + "_normalized") / file, "w+")
+                jsonFile = open(data_dir_target / subdir / file, "w+")
                 jsonFile.write(json.dumps(data))
                 jsonFile.close()
 

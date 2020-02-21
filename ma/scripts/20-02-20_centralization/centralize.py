@@ -20,11 +20,10 @@ Finally set X_n, Y_n to 0
 """
 
 import json
-import numpy as np
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 
 class Centralize:
@@ -39,17 +38,18 @@ class Centralize:
         # get subdirectories of the path
         os.walk(self.path_to_json)
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
-        data_folder = Path(self.path_to_json)
+        data_dir_origin = Path(self.path_to_json)
         subdirectories = subdirectories[0]
 
-        # if there are folders with "_normalized" dont create again
-        # TODO: make in one line
-        subdirectories = [s for s in subdirectories if "_normalized" not in s]
-        subdirectories = [s for s in subdirectories if "_centralized" not in s]
+        # create new target directory, the centralized fiels will be saved there
+        if not os.path.exists(data_dir_origin.parent / str(data_dir_origin.name + "_centralized")):
+            os.makedirs(data_dir_origin.parent / str(data_dir_origin.name + "_centralized"))
+
+        data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_centralized")
 
         for subdir in subdirectories:
-            if not os.path.exists(data_folder / str(subdir + "_centralized")):
-                os.makedirs(data_folder / str(subdir + "_centralized"))
+            if not os.path.exists(data_dir_target / subdir):
+                os.makedirs(data_dir_target / subdir)
 
         # used keys of openpose here
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
@@ -57,14 +57,14 @@ class Centralize:
                        'hand_right_keypoints_2d': []}
 
         for subdir in subdirectories:
-            json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
+            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
                           if pos_json.endswith('.json')]
 
             all_files = {}
             once = 1
             # load files from one folder into dictionary
             for file in json_files:
-                temp_df = json.load(open(data_folder / subdir / file))
+                temp_df = json.load(open(data_dir_origin / subdir / file))
                 # print(temp_df)
                 all_files[file] = {}
 
@@ -149,7 +149,7 @@ class Centralize:
                         temp_df['people'][0][k] = values
 
                 # ## Save our changes to JSON file
-                jsonFile = open(data_folder / str(subdir + "_centralized") / file, "w+")
+                jsonFile = open(data_dir_target / subdir / file, "w+")
                 jsonFile.write(json.dumps(temp_df))
                 jsonFile.close()
             print("%s done" % subdir)

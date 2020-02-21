@@ -4,29 +4,24 @@ Paths - should be the folder where Open Pose JSON output was stored"""
 
 import json
 import math
+import sys
+import time
+
 import cv2
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 from cv2 import LINE_AA
 import os
+from pathlib import Path
 
 
 class JSONVis:
 
-    def __init__(self, width, height, FPS, path_to_json_dir):
+    def __init__(self, width, height, FPS):
         self.width = width
         self.height = height
         self.FPS = FPS
-        self.path_to_json = path_to_json_dir
-
-        if not os.path.exists(path_to_json_dir + "\\output\\"):
-            os.makedirs(path_to_json_dir + "\\output\\")
-        self.path_to_output = path_to_json_dir + "\\output\\"
-
-        self.middle_finger_history = []
-        self.json_files = [pos_json for pos_json in os.listdir(self.path_to_json) if pos_json.endswith('.json')]
-        print('Found: %d json keypoint frame files in folder %s' % (len(self.json_files), self.path_to_json))
 
         self.dist_thumb = []
         self.confidences = {"conf_face": [], "conf_pose": [], "conf_hand_l": [], "conf_hand_r": []}
@@ -39,9 +34,9 @@ class JSONVis:
         self.finger_length = {"right": self.finger_length_r, "left": self.finger_length_l}
 
     def get_points(self, key, file=None):
-        temp_df = json.load(open(self.path_to_json + self.file))
+        temp_df = json.load(open(self.path_to_json / self.file))
         if file is not None:
-            temp_df = json.load(open(self.path_to_json + file))
+            temp_df = json.load(open(self.path_to_json / file))
         temp_x_pose = temp_df['people'][0][key][0::3]
         temp_y_pose = temp_df['people'][0][key][1::3]
         return [temp_x_pose, temp_y_pose]
@@ -53,9 +48,9 @@ class JSONVis:
         :param file: a json file the confidence of a key is computed
         :return: mean confidence of all values of a key in a certain file, whole array of all confidence values
         """
-        temp_df = json.load(open(self.path_to_json + self.file))
+        temp_df = json.load(open(self.path_to_json / self.file))
         if file is not None:
-            temp_df = json.load(open(self.path_to_json + file))
+            temp_df = json.load(open(self.path_to_json / file))
         temp_conf = temp_df['people'][0][key_file][2::3]
         return np.mean(temp_conf), temp_conf
 
@@ -251,9 +246,34 @@ class JSONVis:
         else:
             return frame
 
-    def draw_main(self):
+    def draw_main(self, path_to_json_dir):
+        # get subdirectories of the path
+        os.walk(path_to_json_dir)
+        subdirectories = [x[1] for x in os.walk(path_to_json_dir)]
+        data_dir_origin = Path(path_to_json_dir)
+        subdirectories = subdirectories[0]
+
+        # create new target directory, the centralized fiels will be saved there
+        if not os.path.exists(data_dir_origin.parent / str(data_dir_origin.name + "_visualized")):
+            os.makedirs(data_dir_origin.parent / str(data_dir_origin.name + "_visualized"))
+
+        data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_visualized")
+
+        for subdir in subdirectories:
+            if not os.path.exists(data_dir_target / subdir):
+                os.makedirs(data_dir_target / subdir)
+
+        for subdir in subdirectories:
+            self.json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir) if pos_json.endswith('.json')]
+            self.path_to_json = data_dir_origin / subdir
+            print('Found: %d json keypoint frame files in folder %s' % (len(self.json_files), self.path_to_json))
+            self.path_to_output = data_dir_target / subdir
+            self.draw()
+            print("%s done" % subdir)
+
+    def draw(self):
         fourcc = cv2.VideoWriter_fourcc(*'MP42')
-        video = cv2.VideoWriter(self.path_to_output + 'json_vis.avi', fourcc, float(self.FPS), (self.width, self.height))
+        video = cv2.VideoWriter(str(self.path_to_output / 'json_vis.avi'), fourcc, float(self.FPS), (self.width, self.height))
         idx = 0
         once = 1
 
@@ -298,43 +318,42 @@ class JSONVis:
             cv2.putText(frame, str(idx), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255))
             video.write(frame)
 
-            """ 
+
             # helper function to visualize when setting max finger length
             # how frames when fingers are longer than threshold
-            max_finger_length = 250
-            for side in self.finger_length:
-                for key in self.finger_length[side]:
-                    self.write_file(frame, key, idx, side, max_finger_length)
-            """
+            # max_finger_length = 250
+            # for side in self.finger_length:
+            #     for key in self.finger_length[side]:
+            #         self.write_file(frame, key, idx, side, max_finger_length)
 
             # show computing status in console
-            if idx % 100 == 0:
-                print("Frame: %d of %d" % (idx, len(self.json_files)))
-            self.fill_plotter_data(file)
-            idx += 1
+            # if idx % 100 == 0:
+            #     print("Frame: %d of %d" % (idx, len(self.json_files)))
+            # self.fill_plotter_data(file)
+            # idx += 1
 
         self.plot_data()
         video.release()
 
     def write_file(self, frame, key, idx, side, threshold_length):
-        save_img_path = "C:\\Uni\Master\\41_Master_Thesis\\1_Vorbereitung-MA\\ML-VL-Recap\\python\\" \
-                        "Uebungen\\random_pytorch_examples\\february\\finger_pictures\\"
+        save_img_path = self.path_to_output / "finger_pictures"
+        if not os.path.exists(save_img_path):
+            os.makedirs(save_img_path)
 
-        os.chdir(save_img_path)
-        new_path = "over_" + str(threshold_length) + "\\" + side + "\\"
+        new_path = save_img_path / str("over_" + str(threshold_length)) / side
         if not os.path.exists(new_path):
             os.makedirs(new_path)
         if self.finger_length[side][key][idx] > threshold_length:
             # print("%s %s length more than %d in frame: %d" % (side, key, threshold_length, idx))
-            cv2.imwrite(save_img_path + "over_" + str(threshold_length) + "\\" + side + "\\" + side + "_" +
-                        str(key) + "_over-" + str(threshold_length) + "_frame-" + str(idx) + ".jpg", frame)
+            cv2.imwrite(new_path / str(side + "_" + str(key) + "_over-" + str(threshold_length) + "_frame-" +
+                                       str(idx) + ".jpg", frame))
 
     def plot_data(self):
 
-        if not os.path.exists(self.path_to_output + "\\plots\\"):
-            os.makedirs(self.path_to_output + "\\plots\\")
+        if not os.path.exists(self.path_to_output / "plots"):
+            os.makedirs(self.path_to_output / "plots")
 
-        path_to_plots = self.path_to_output + "\\plots\\"
+        path_to_plots = self.path_to_output / "plots"
 
         plt.figure(1)
         plt.figure(figsize=(12, 7.2))
@@ -348,7 +367,7 @@ class JSONVis:
         plt.legend()
         plt.ylabel('Confidences')
         plt.xlabel('Frames')
-        plt.savefig(path_to_plots + 'confidences-face-pose.png')
+        plt.savefig(path_to_plots / 'confidences-face-pose.png')
 
         plt.figure(2)
         plt.figure(figsize=(12, 7.2))
@@ -363,7 +382,7 @@ class JSONVis:
         plt.ylabel('Confidences')
         plt.xlabel('Frames')
 
-        plt.savefig(path_to_plots + 'confidences-hands.png')
+        plt.savefig(path_to_plots / 'confidences-hands.png')
 
         plt.figure(3)
         self.plot_finger_length("thumb", path_to_plots)
@@ -399,7 +418,7 @@ class JSONVis:
         plt.xlabel('Frames')
         plt.ylabel('Length')
 
-        plt.savefig(path_to_plots + "lengths-" + label + ".png")
+        plt.savefig(path_to_plots / str("lengths-" + label + ".png"))
 
     def fill_plotter_data(self, file):
         # get confidences and add them to a dictionary
@@ -413,6 +432,16 @@ if __name__ == '__main__':
     width = 1280
     height = 720
     FPS = 15
-    path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json\_2FBDaOPYig-3-rgb_front\\"
-    vis = JSONVis(width, height, FPS, path_to_json_dir)
-    vis.draw_main()
+
+    if len(sys.argv) > 1:
+        path_to_json_dir = sys.argv[1]
+    else:
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
+    vis = JSONVis(width, height, FPS)
+    start_time = time.time()
+    vis.draw_main(path_to_json_dir)
+
+    print("--- %s seconds ---" % (time.time() - start_time))
+
+    path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json\\"
+

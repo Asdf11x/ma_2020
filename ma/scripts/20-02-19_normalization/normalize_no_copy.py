@@ -4,6 +4,8 @@ Work in the fodler folder_name_normalized
 Get x/y_mean and x/y_stddev for whole folder and write it into a dictionary
 use the dictionary to normalize the values
 write normalized values into json file in folder_name_normalized
+
+same functions as normalize.py, but copying files on-the-fly without a save copy beforehand
 """
 
 import json
