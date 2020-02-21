@@ -1,11 +1,9 @@
-"""normalize.py: normalize json files in a folder
+"""normalize_slow.py: normalize json files in a folder
 Copy json data from folder_name to folder_name_normalized
 Work in the fodler folder_name_normalized
 Get x/y_mean and x/y_stddev for whole folder and write it into a dictionary
 use the dictionary to normalize the values
 write normalized values into json file in folder_name_normalized
-
-same functions as normalize.py, but copying files on-the-fly without a save copy beforehand
 """
 
 import json
@@ -26,7 +24,7 @@ class Normalize:
 
     def main_normalize(self):
         print("Start to copy files...")
-        # self.copy_files()
+        self.copy_files()
         self.normalize()
 
     def copy_files(self):
@@ -41,24 +39,9 @@ class Normalize:
                 os.makedirs(data_folder / str(subdir + "_normalized"))
             copy_tree(str(data_folder / subdir), str(data_folder / str(subdir + "_normalized")))
 
-            print("Copied files from %s to %s" % (
-            str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
+            print("Copied files from %s to %s" % (str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
 
     def normalize(self):
-        # copy
-        os.walk(self.path_to_json)
-        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
-        data_folder = Path(self.path_to_json)
-        # if there are folders with "_normalized" dont copy them again
-        subdirectories_copy = [s for s in subdirectories[0] if "_normalized" not in s]
-        for subdir in subdirectories_copy:
-            if not os.path.exists(data_folder / str(subdir + "_normalized")):
-                os.makedirs(data_folder / str(subdir + "_normalized"))
-            # copy_tree(str(data_folder / subdir), str(data_folder / str(subdir + "_normalized")))
-
-            print("Copied files from %s to %s" % (
-            str(data_folder / subdir), str(data_folder / str(subdir + "_normalized"))))
-
         # used keys of openpose here
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         folder_mean_stddev = {'pose_keypoints_2d': [], 'face_keypoints_2d': [], 'hand_left_keypoints_2d': [],
@@ -78,8 +61,8 @@ class Normalize:
         # folder_name - key - 0 - 1: array of x_stddev
         # folder_name - key - 1 - 0: array of y_mean
         # folder_name - key - 1 - 1: array of y_stddev
-        for subdir in subdirectories_copy:
-            print("Computing mean and stddev for %s" % (subdir))
+        for subdir in subdirectories_work:
+            print("Computing mean and stddev for %s" %(subdir))
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
             idx = 0
@@ -112,7 +95,7 @@ class Normalize:
         print("Computed all mean and stddev. Normalizing...")
 
         # use mean and stddev from above to compute values for the json files
-        for subdir in subdirectories_copy:
+        for subdir in subdirectories_work:
             folder_mean_stddev = all_mean_stddev[subdir]
             json_files = [pos_json for pos_json in os.listdir(data_folder / subdir)
                           if pos_json.endswith('.json')]
@@ -160,7 +143,7 @@ class Normalize:
                     data['people'][0][k] = values
 
                 # ## Save our changes to JSON file
-                jsonFile = open(data_folder / str(subdir + "_normalized") / file, "w+")
+                jsonFile = open(data_folder / subdir / file, "w+")
                 jsonFile.write(json.dumps(data))
                 jsonFile.close()
 
@@ -199,7 +182,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy"
     norm = Normalize(path_to_json_dir)
     start_time = time.time()
     norm.main_normalize()

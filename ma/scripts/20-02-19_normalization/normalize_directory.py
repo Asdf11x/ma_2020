@@ -1,4 +1,4 @@
-"""normalize.py: normalize json files in a folder
+"""normalize_slow.py: normalize json files in a folder
 Copy json data from folder_name to folder_name_normalized
 Work in the fodler folder_name_normalized
 Get x/y_mean and x/y_stddev for whole folder and write it into a dictionary
@@ -44,7 +44,10 @@ class Normalize:
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         folder_mean_stddev = {'pose_keypoints_2d': [], 'face_keypoints_2d': [], 'hand_left_keypoints_2d': [],
                               'hand_right_keypoints_2d': []}
-        all_mean_stddev = {}
+        all_mean_stddev = {}  # holds means and stddev of each directory, one json file per directory
+        total_computed_mean_stddev = {}  # holds the computed means and stddevs from all_mean_stddev, so its one json file in total
+        files_amount = {}
+        once = 1
         # get mean and stddev of whole folder and write it into a dictionary
         # the dictionary contains for each key the mean and stddev for x and y of the whole folder:
         # folder_name - key - 0 - 0: array of x_mean
@@ -57,18 +60,20 @@ class Normalize:
                           if pos_json.endswith('.json')]
             all_files = {}
             folder_mean_stddev = {}
-            dic_helper = {}
+            files_amount[subdir] = len([name for name in Path(data_dir_origin / subdir).iterdir()
+                                        if os.path.isfile(name)])
 
             # load files from one folder into dictionary
             for file in json_files:
                 temp_df = json.load(open(data_dir_origin / subdir / file))
                 all_files[file] = {}
-                dic_helper[file] = {}
 
                 # init dictionaries
                 for k in keys:
-                    dic_helper[file][k] = []
                     all_files[file][k] = {'x': [], 'y': []}
+                if once == 1:
+                    total_computed_mean_stddev = all_files[file].copy()
+                    once = 0
 
                 # write x, y values into dictionary
                 for k in keys:
@@ -81,12 +86,16 @@ class Normalize:
                 file_y_l = []
                 mean_stddev_x = []
                 mean_stddev_y = []
+                # save all x and y values of all files
                 for file in all_files.keys():
                     file_x_l.extend(all_files[file][k]['x'])
                     file_y_l.extend(all_files[file][k]['y'])
+
+                # transpose, so all x_1 (x_2, ...)  of all files are in one array
                 file_x_l_T = np.array(file_x_l).T.tolist()
                 file_y_l_T = np.array(file_y_l).T.tolist()
 
+                # compute the mean and std_dev for the array where all x_1 (x_2, ...) are stored
                 for idx in range(len(file_x_l_T)):
                     mean_stddev_x.append([np.mean(file_x_l_T[idx]), statistics.stdev(file_x_l_T[idx])])
                     mean_stddev_y.append([np.mean(file_y_l_T[idx]), statistics.stdev(file_y_l_T[idx])])
@@ -95,6 +104,59 @@ class Normalize:
             # copy mean and stddev per folder into a dictionary, so all_mean_stddev has all mean & stddevs of all folders
             # per folder one json file
             all_mean_stddev[subdir] = folder_mean_stddev.copy()
+
+        amount_all_files = sum(files_amount.values())
+        for subdir in subdirectories:
+            files_amount[subdir] = files_amount[subdir] / amount_all_files
+
+        print(files_amount)
+        # compute mean and stddev for whole directory
+        # get mean and stddev per key
+        for k in keys:
+            dir_x_mean = []
+            dir_x_std_dev = []
+
+            dir_y_mean = []
+            dir_y_std_dev = []
+
+            mean_stddev_x = []
+            mean_stddev_y = []
+            weights = []
+            # save all x and y values of all files
+            for subdir in subdirectories:
+                dir_x_mean.append(all_mean_stddev[subdir][k][0][0])
+                dir_x_std_dev.append(all_mean_stddev[subdir][k][0][1])
+                dir_y_mean.append(all_mean_stddev[subdir][k][1][0])
+                dir_y_std_dev.append(all_mean_stddev[subdir][k][1][1])
+                weights = list(files_amount.values())
+            # transpose, so all x_1 (x_2, ...)  of all files are in one array
+            dir_x_mean_t = np.array(dir_x_mean).T.tolist()
+            dir_x_std_dev_t = np.array(dir_x_std_dev).T.tolist()
+            dir_y_mean_t = np.array(dir_y_mean).T.tolist()
+            dir_y_std_dev_t = np.array(dir_y_std_dev).T.tolist()
+
+            # calculate weighted means
+            weighted_means_x = []
+            weighted_std_devs_x = []
+            weighted_means_y = []
+            weighted_std_devs_y = []
+            for value in range(len(dir_x_mean_t)):
+                weighted_means_x.append(np.sum(np.array(dir_x_mean_t[value]) * np.array([weights])))
+                weighted_std_devs_x.append(np.sum(np.array(dir_x_std_dev_t[value]) * np.array([weights])))
+                # weighted_means_y.append(np.sum(np.array(dir_y_mean_t[value]) * np.array([weights])))
+                # weighted_std_devs_y.append(np.sum(np.array(dir_y_std_dev_t[value]) * np.array([weights])))
+
+            # print(weighted_means_x)
+            # total_computed_mean_stddev[k]['x']
+            mean_stddev_x.append([weighted_means_x, weighted_std_devs_x])
+            print(mean_stddev_x)
+            mean_stddev_y.append([weighted_means_y, weighted_std_devs_y])
+
+        total_computed_mean_stddev[k] = [np.array(mean_stddev_x).T.tolist(), np.array(mean_stddev_y).T.tolist()]
+
+
+        print(total_computed_mean_stddev)
+
 
         print("Computed all mean and stddev. Normalizing...")
 
@@ -156,7 +218,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy"
     norm = Normalize(path_to_json_dir)
     start_time = time.time()
     norm.main_normalize()
