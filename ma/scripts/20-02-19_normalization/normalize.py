@@ -156,7 +156,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy"
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
     norm = Normalize(path_to_json_dir)
     start_time = time.time()
     norm.main_normalize()
