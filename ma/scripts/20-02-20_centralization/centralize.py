@@ -28,11 +28,9 @@ from pathlib import Path
 
 class Centralize:
 
-    def __init__(self, path_to_json_dir):
+    def __init__(self, path_to_json_dir, path_to_target_dir):
         self.path_to_json = path_to_json_dir
-
-    def main_centralize(self):
-        self.centralize()
+        self.path_to_target_dir = path_to_target_dir
 
     def centralize(self):
         # get subdirectories of the path
@@ -41,11 +39,15 @@ class Centralize:
         data_dir_origin = Path(self.path_to_json)
         subdirectories = subdirectories[0]
 
-        # create new target directory, the centralized fiels will be saved there
-        if not os.path.exists(data_dir_origin.parent / str(data_dir_origin.name + "_centralized")):
-            os.makedirs(data_dir_origin.parent / str(data_dir_origin.name + "_centralized"))
+        # create new target directory, the files will be saved there
+        if self.path_to_target_dir == "":
+            data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_centralized")
+        else:
+            data_dir_target = Path(self.path_to_target_dir)
 
-        data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_centralized")
+        # create new target directory, the fils will be saved there
+        if not os.path.exists(data_dir_target):
+            os.makedirs(data_dir_target)
 
         for subdir in subdirectories:
             if not os.path.exists(data_dir_target / subdir):
@@ -156,11 +158,18 @@ class Centralize:
 
 
 if __name__ == '__main__':
+    # origin json files directory
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
-    norm = Centralize(path_to_json_dir)
+        print("set json file directory")
+
+    # target directory
+    path_to_target_dir = ""
+    if len(sys.argv) > 2:
+        path_to_target_dir = sys.argv[2]
+
+    norm = Centralize(path_to_json_dir, path_to_target_dir)
     start_time = time.time()
-    norm.main_centralize()
+    norm.centralize()
     print("--- %s seconds ---" % (time.time() - start_time))

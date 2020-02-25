@@ -83,8 +83,10 @@ class Normalize:
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
-        all_files = {}
-        all_files['all'] = {}
+        all_files = {'all': {}}
+        mean_stdev_x = []
+        mean_stdev_y = []
+
         for subdir in subdirectories:
             print("Reading files from %s" % subdir)
             json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
@@ -100,9 +102,9 @@ class Normalize:
                 for k in keys:
                     all_files['all'][k]['x'].append(temp_df['people'][0][k][0::3])
                     all_files['all'][k]['y'].append(temp_df['people'][0][k][1::3])
-        print("Read files. Computing mean and pstdev")
-        mean_stdev_x = []
-        mean_stdev_y = []
+
+        print("Files read, computing mean and stdev")
+
         for k in keys:
             for list in np.array(all_files['all'][k]['x']).T.tolist():
                 mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
@@ -111,10 +113,11 @@ class Normalize:
                 mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
 
             all_mean_stdev[k] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
+
         f = open(data_dir_target / "dir_mean_stdev.json", "w")
         f.write(json.dumps(all_mean_stdev))
         f.close()
-        print("Computed all mean and pstdev. Normalizing...")
+        print("Normalizing...")
         return all_mean_stdev, keys
 
     def create_folders(self):
@@ -123,16 +126,20 @@ class Normalize:
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
         data_dir_origin = Path(self.path_to_json)
         subdirectories = subdirectories[0]
-        # create new target directory, the centralized fiels will be saved there
-        if not os.path.exists(data_dir_origin.parent / str(data_dir_origin.name + "_normalized")):
-            os.makedirs(data_dir_origin.parent / str(data_dir_origin.name + "_normalized"))
+
         if self.path_to_target_dir == "":
             data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_normalized")
         else:
             data_dir_target = Path(self.path_to_target_dir)
+
+        # create new target directory, the fils will be saved there
+        if not os.path.exists(data_dir_target):
+            os.makedirs(data_dir_target)
+
         for subdir in subdirectories:
             if not os.path.exists(data_dir_target / subdir):
                 os.makedirs(data_dir_target / subdir)
+
         return data_dir_origin, data_dir_target, subdirectories
 
 
