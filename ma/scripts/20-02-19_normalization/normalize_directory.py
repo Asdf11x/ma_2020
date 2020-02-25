@@ -25,58 +25,27 @@ class Normalize:
 
         self.normalize_write(all_mean_stdev, data_dir_origin, data_dir_target, keys, subdirectories)
 
-    def normalize_write(self, all_mean_stdev, data_dir_origin, data_dir_target, keys, subdirectories):
-        # use mean and stdev to compute values for the json files
+    def create_folders(self):
+        # get subdirectories of the path
+        os.walk(self.path_to_json)
+        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
+        data_dir_origin = Path(self.path_to_json)
+        subdirectories = subdirectories[0]
+
+        if self.path_to_target_dir == "":
+            data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_normalized")
+        else:
+            data_dir_target = Path(self.path_to_target_dir)
+
+        # create new target directory, the fils will be saved there
+        if not os.path.exists(data_dir_target):
+            os.makedirs(data_dir_target)
+
         for subdir in subdirectories:
-            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
-                          if pos_json.endswith('.json')]
+            if not os.path.exists(data_dir_target / subdir):
+                os.makedirs(data_dir_target / subdir)
 
-            for file in json_files:
-                jsonFile = open(data_dir_origin / subdir / file, "r")  # Open the JSON file for reading
-                data = json.load(jsonFile)  # Read the JSON into the buffer
-                jsonFile.close()  # Close the JSON file
-
-                # x -> [0::3]
-                # y -> [1:.3]
-                # c -> [2::3] (confidence)
-                for k in keys:
-                    # x values
-                    temp_x = data['people'][0][k][0::3]
-                    temp_y = data['people'][0][k][1::3]
-                    temp_c = data['people'][0][k][2::3]
-
-                    # get x values and normalize it
-                    for index in range(len(temp_x)):
-                        mean = all_mean_stdev[k][0][0][index]
-                        stdev = all_mean_stdev[k][0][1][index]
-                        if stdev != 0:
-                            temp_x[index] = (temp_x[index] - mean) / stdev
-                        else:
-                            temp_x[index] = temp_x[index]
-
-                    # get y values and normalize it
-                    for index in range(len(temp_y)):
-                        mean = all_mean_stdev[k][1][0][index]
-                        stdev = all_mean_stdev[k][1][1][index]
-                        if stdev != 0:
-                            temp_y[index] = (temp_y[index] - mean) / stdev
-                        else:
-                            temp_y[index] = temp_y[index]
-
-                    # build new array of normalized values
-                    values = []
-                    for index in range(len(temp_x)):
-                        values.append(temp_x[index])
-                        values.append(temp_y[index])
-                        values.append(temp_c[index])
-
-                    # copy the array of normalized values where it came from
-                    data['people'][0][k] = values
-
-                # ## Save our changes to JSON file
-                jsonFile = open(data_dir_target / subdir / file, "w+")
-                jsonFile.write(json.dumps(data))
-                jsonFile.close()
+        return data_dir_origin, data_dir_target, subdirectories
 
     def compute_mean_stdev(self, data_dir_origin, data_dir_target, subdirectories):
         # use keys of openpose here
@@ -107,10 +76,20 @@ class Normalize:
 
         for k in keys:
             for list in np.array(all_files['all'][k]['x']).T.tolist():
-                mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
+                if "Null" in list:
+                    print(list)
+                    mean_stdev_x.append(["Null", "Null"])
+                else:
+                    print(list)
+                    list = [float(item) for item in list]
+                    mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
 
             for list in np.array(all_files['all'][k]['y']).T.tolist():
-                mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
+                if "Null" in list:
+                    mean_stdev_y.append(["Null", "Null"])
+                else:
+                    list = [float(item) for item in list]
+                    mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
 
             all_mean_stdev[k] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
 
@@ -120,27 +99,62 @@ class Normalize:
         print("Normalizing...")
         return all_mean_stdev, keys
 
-    def create_folders(self):
-        # get subdirectories of the path
-        os.walk(self.path_to_json)
-        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
-        data_dir_origin = Path(self.path_to_json)
-        subdirectories = subdirectories[0]
-
-        if self.path_to_target_dir == "":
-            data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_normalized")
-        else:
-            data_dir_target = Path(self.path_to_target_dir)
-
-        # create new target directory, the fils will be saved there
-        if not os.path.exists(data_dir_target):
-            os.makedirs(data_dir_target)
-
+    def normalize_write(self, all_mean_stdev, data_dir_origin, data_dir_target, keys, subdirectories):
+        # use mean and stdev to compute values for the json files
         for subdir in subdirectories:
-            if not os.path.exists(data_dir_target / subdir):
-                os.makedirs(data_dir_target / subdir)
+            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
+                          if pos_json.endswith('.json')]
 
-        return data_dir_origin, data_dir_target, subdirectories
+            for file in json_files:
+                jsonFile = open(data_dir_origin / subdir / file, "r")  # Open the JSON file for reading
+                data = json.load(jsonFile)  # Read the JSON into the buffer
+                jsonFile.close()  # Close the JSON file
+
+                # x -> [0::3]
+                # y -> [1:.3]
+                # c -> [2::3] (confidence)
+                for k in keys:
+                    # x values
+                    temp_x = data['people'][0][k][0::3]
+                    temp_y = data['people'][0][k][1::3]
+                    temp_c = data['people'][0][k][2::3]
+
+                    # get x values and normalize it
+                    for index in range(len(temp_x)):
+                        mean_x = all_mean_stdev[k][0][0][index]
+                        stdev_x = all_mean_stdev[k][0][1][index]
+
+                        mean_y = all_mean_stdev[k][1][0][index]
+                        stdev_y = all_mean_stdev[k][1][1][index]
+
+                        if str(stdev_x) == "Null":
+                            temp_x[index] = temp_x[index]
+                        elif float(stdev_x) == 0:
+                            temp_x[index] = temp_x[index]
+                        else:
+                            temp_x[index] = (temp_x[index] - float(mean_x)) / float(stdev_x)
+
+                        if str(stdev_y) == "Null":
+                            temp_y[index] = temp_y[index]
+                        elif float(stdev_y) == 0:
+                            temp_y[index] = temp_y[index]
+                        else:
+                            temp_y[index] = (temp_y[index] - float(mean_y)) / float(stdev_y)
+
+                    # build new array of normalized values
+                    values = []
+                    for index in range(len(temp_x)):
+                        values.append(temp_x[index])
+                        values.append(temp_y[index])
+                        values.append(temp_c[index])
+
+                    # copy the array of normalized values where it came from
+                    data['people'][0][k] = values
+
+                # ## Save our changes to JSON file
+                jsonFile = open(data_dir_target / subdir / file, "w+")
+                jsonFile.write(json.dumps(data))
+                jsonFile.close()
 
 
 if __name__ == '__main__':
