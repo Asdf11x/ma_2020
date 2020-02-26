@@ -27,7 +27,6 @@ class Normalize:
 
     def create_folders(self):
         # get subdirectories of the path
-        os.walk(self.path_to_json)
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
         data_dir_origin = Path(self.path_to_json)
         subdirectories = subdirectories[0]
@@ -77,10 +76,8 @@ class Normalize:
         for k in keys:
             for list in np.array(all_files['all'][k]['x']).T.tolist():
                 if "Null" in list:
-                    print(list)
                     mean_stdev_x.append(["Null", "Null"])
                 else:
-                    print(list)
                     list = [float(item) for item in list]
                     mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
 

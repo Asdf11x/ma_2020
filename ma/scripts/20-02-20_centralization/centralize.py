@@ -34,7 +34,6 @@ class Centralize:
 
     def centralize(self):
         # get subdirectories of the path
-        os.walk(self.path_to_json)
         subdirectories = [x[1] for x in os.walk(self.path_to_json)]
         data_dir_origin = Path(self.path_to_json)
         subdirectories = subdirectories[0]
