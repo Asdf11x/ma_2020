@@ -61,7 +61,7 @@ class Rescale:
                     x_in_key = all_files[file][k]['x'][0]
                     y_in_key = all_files[file][k]['y'][0]
                     # get limbs
-                    self.dist(x_in_key[0], x_in_key[1], y_in_key[0], y_in_key[1])
+                    self.dist((x_in_key[0], x_in_key[1]), (y_in_key[0], y_in_key[1]))
 
 
         """
