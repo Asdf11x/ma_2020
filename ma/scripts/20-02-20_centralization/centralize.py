@@ -62,13 +62,13 @@ class Centralize:
                           if pos_json.endswith('.json')]
 
             all_files = {}
-            once = 1
+
             # load files from one folder into dictionary
             for file in json_files:
                 temp_df = json.load(open(data_dir_origin / subdir / file))
                 # print(temp_df)
                 all_files[file] = {}
-
+                once = 1
                 # init dictionaries & write x, y values into dictionary
                 for k in keys:
                     all_files[file][k] = {'x': [], 'y': []}
@@ -83,7 +83,7 @@ class Centralize:
                     # set neck once
                     if once == 1:
                         neck_zero_x = all_files[file][k]['x'][0][0]
-                        neck_zero_y = all_files[file][k]['x'][0][0]
+                        neck_zero_y = all_files[file][k]['y'][0][0]
                         once = 0
 
                     # compute for pose

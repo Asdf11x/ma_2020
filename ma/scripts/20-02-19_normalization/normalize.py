@@ -75,6 +75,7 @@ class Normalize:
                     all_files[file][k]['x'].append(temp_df['people'][0][k][0::3])
                     all_files[file][k]['y'].append(temp_df['people'][0][k][1::3])
 
+            print(all_files)
             # get mean and stddev per key
             for k in keys:
                 file_x_l = []
@@ -95,7 +96,7 @@ class Normalize:
             # copy mean and stddev per folder into a dictionary, so all_mean_stddev has all mean & stddevs of all folders
             # per folder one json file
             all_mean_stddev[subdir] = folder_mean_stddev.copy()
-
+        print(all_mean_stddev)
         print("Computed all mean and stddev. Normalizing...")
 
         # use mean and stddev from above to compute values for the json files
@@ -156,7 +157,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         path_to_json_dir = sys.argv[1]
     else:
-        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json"
+        path_to_json_dir = r"C:\Users\Asdf\Downloads\How2Sign_samples\openpose_output\json_testy"
     norm = Normalize(path_to_json_dir)
     start_time = time.time()
     norm.main_normalize()
