@@ -1,7 +1,5 @@
 # mt_2020
 
-Using this repo for ma
-
 So far:
 
 - file_changer: change names so they can be processed
