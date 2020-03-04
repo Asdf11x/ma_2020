@@ -3,9 +3,8 @@
 - compute the mean and stdev of each value
 - use the mean and stdev to normalize the data and write them into new json, repeat for all folders
 
-VERSION DESCRIPTION:
+Version description:
 - sticked to row per row and transpose
-
 """
 
 import json
@@ -17,95 +16,52 @@ import sys
 import time
 
 
-# TODO: one separate script for creationg a numpy with raw data
-# TODO: give path to the numpy file with raw data
-
 class Normalize:
 
-    def __init__(self, path_to_json_dir, path_to_target_dir):
-        self.path_to_json = path_to_json_dir
+    def __init__(self, path_to_numpy_file, path_to_target_dir="", path_to_json_dir=""):
+        self.path_to_numpy_file = Path(path_to_numpy_file)
         self.path_to_target_dir = path_to_target_dir
+        self.path_to_json = Path(path_to_json_dir)
         self.keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
 
     def main(self):
-        # create folders and paths
-        data_dir_origin, data_dir_target, subdirectories = self.create_folders()
+        # create target directory
+        self.create_folders()
 
         # read files to dictionary and save dictionary in target directory
-        dictionary_file_path = self.copy_dictionary_to_file(data_dir_origin, data_dir_target, subdirectories)
+        # removed functionality, use seperate script instead to create numpy
+        # file and specify the path when using this script
+        # dictionary_file_path = self.copy_dictionary_to_file(subdirectories)
 
         # centralize values
         all_files_dictionary_centralized = None
-        all_files_dictionary_centralized = self.centralize(data_dir_target, subdirectories, dictionary_file_path)
-        # print(all_files_dictionary_centralized)
+        all_files_dictionary_centralized = self.centralize()
+
         # normalize values
-        all_mean_stdev = self.compute_mean_stdev(data_dir_origin, data_dir_target, subdirectories, dictionary_file_path, all_files_dictionary_centralized)
-        self.normalize(all_mean_stdev, data_dir_target, subdirectories, all_files_dictionary_centralized)
+        all_mean_stdev = self.compute_mean_stdev(all_files_dictionary_centralized)
+        self.normalize(all_mean_stdev, all_files_dictionary_centralized)
 
     def create_folders(self):
-        # get subdirectories of the path
-        subdirectories = [x[1] for x in os.walk(self.path_to_json)]
-        data_dir_origin = Path(self.path_to_json)
-        subdirectories = subdirectories[0]
-
         if self.path_to_target_dir == "":
-            data_dir_target = data_dir_origin.parent / str(data_dir_origin.name + "_normalized")
+            data_dir_target = self.path_to_numpy_file.parent
         else:
-            data_dir_target = Path(self.path_to_target_dir)
+            data_dir_target = self.path_to_target_dir
 
         # create new target directory, the files will be saved there
         if not os.path.exists(data_dir_target):
             os.makedirs(data_dir_target)
+        self.path_to_target_dir = Path(data_dir_target)
 
-        for subdir in subdirectories:
-            if not os.path.exists(data_dir_target / subdir):
-                os.makedirs(data_dir_target / subdir)
-
-        return data_dir_origin, data_dir_target, subdirectories
-
-    def copy_dictionary_to_file(self, data_dir_origin, data_dir_target, subdirectories):
-
-        dictionary_file_path = data_dir_target / 'all_files.npy'
-        last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(dictionary_file_path.name)
-
-        if dictionary_file_path.is_file():
-            print(".../%s file already exists. Not copying files " % last_folder)
-            return dictionary_file_path
-        else:
-            print("Saving files to %s " % dictionary_file_path)
-
-        # use keys of openpose here
-        all_files = {}
-
-        for subdir in subdirectories:
-            print("Reading files from %s" % subdir)
-            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
-                          if pos_json.endswith('.json')]
-            all_files[subdir] = {}
-            # load files from one folder into dictionary
-            for file in json_files:
-                temp_df = json.load(open(data_dir_origin / subdir / file))
-                all_files[subdir][file] = temp_df
-
-        np.save(dictionary_file_path, all_files)
-        return Path(dictionary_file_path)
-
-    def centralize(self, data_dir_target, subdirectories, dictionary_file_path):
+    def centralize(self):
 
         # load from .npy file
-        print("To centralize load file from \n %s" % dictionary_file_path)
+        print("To centralize load file from \n %s" % self.path_to_numpy_file)
         old = np.load
         np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
-        all_files_dictionary = np.load(dictionary_file_path).item()
+        all_files_dictionary = np.load(self.path_to_numpy_file).item()
 
         # used keys of openpose here
-        keys = self.keys
-        folder_keys = {'pose_keypoints_2d': [], 'face_keypoints_2d': [], 'hand_left_keypoints_2d': [],
-                       'hand_right_keypoints_2d': []}
-        # print(all_files_dictionary['bb1Z5dw4N-s-8-rgb_front']['bb1Z5dw4N-s-8-rgb_front_000000000590_keypoints.json'])
-        for subdir in subdirectories:
-            # json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
-            #               if pos_json.endswith('.json')]
+        for subdir in all_files_dictionary.keys():
 
             all_files = {}
 
@@ -116,7 +72,7 @@ class Normalize:
                 all_files[file] = {}
                 once = 1
                 # init dictionaries & write x, y values into dictionary
-                for k in keys:
+                for k in self.keys:
                     all_files[file][k] = {'x': [], 'y': []}
                     all_files[file][k]['x'].append(temp_df['people'][0][k][0::3])
                     all_files[file][k]['y'].append(temp_df['people'][0][k][1::3])
@@ -162,7 +118,7 @@ class Normalize:
                             if y_in_key[idx] == 0:
                                 results_y.append("Null")
                             else:
-                                results_y.append(round(neck_zero_y - y_in_key[idx],4))
+                                results_y.append(round(neck_zero_y - y_in_key[idx], 4))
 
                         # add more legs
                         results_x += (['Null'] * 6)
@@ -181,12 +137,12 @@ class Normalize:
                             if x_in_key[idx] == 0:
                                 results_x.append('Null')
                             else:
-                                results_x.append(round(neck_zero_x - x_in_key[idx],4))
+                                results_x.append(round(neck_zero_x - x_in_key[idx], 4))
 
                             if y_in_key[idx] == 0:
                                 results_y.append("Null")
                             else:
-                                results_y.append(round(neck_zero_y - y_in_key[idx],4))
+                                results_y.append(round(neck_zero_y - y_in_key[idx], 4))
 
                         values = []
                         for index in range(len(temp_c)):
@@ -204,8 +160,9 @@ class Normalize:
             # print("%s done" % subdir)
         print("centralization done")
 
-        dictionary_file_path = data_dir_target / 'all_files_centralized.npy'
-        last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(dictionary_file_path.name)
+        dictionary_file_path = self.path_to_target_dir / 'all_files_centralized.npy'
+        last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
+            dictionary_file_path.name)
 
         # f = open(data_dir_target/ "all_files_dictionary.json", "w")
         # f.write(json.dumps(all_files_dictionary['bb1Z5dw4N-s-8-rgb_front']))
@@ -220,49 +177,38 @@ class Normalize:
 
         return all_files_dictionary
 
-    def compute_mean_stdev(self, data_dir_origin, data_dir_target, subdirectories, dictionary_file_path, all_files_dictionary_centralized):
-
-        normalized_from_centralized_data = 0
+    def compute_mean_stdev(self, all_files_dictionary_centralized):
 
         if all_files_dictionary_centralized is None:
             # load from .npy file
-            print("To normalize loading from %s file" % dictionary_file_path)
+            print("To normalize loading from %s file" % self.path_to_numpy_file)
             old = np.load
             np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
-            all_files = np.load(dictionary_file_path).item()
+            all_files = np.load(self.path_to_numpy_file).item()
         else:
             all_files = all_files_dictionary_centralized
-            normalized_from_centralized_data = 1
-
 
         # use keys of openpose here
-        keys = self.keys
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
         all_files_xy = {'all': {}}
         mean_stdev_x = []
         mean_stdev_y = []
 
-        for subdir in subdirectories:
-            # print("Reading files from %s" % subdir)
-            # json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
-            #               if pos_json.endswith('.json')]
-
+        for subdir in all_files.keys():
             # load files from one folder into dictionary
             for file in all_files[subdir]:
                 temp_df = all_files[subdir][file]
                 if once == 1:
-                    for k in keys:
+                    for k in self.keys:
                         all_files_xy['all'][k] = {'x': [], 'y': []}
                     once = 0
-                for k in keys:
+                for k in self.keys:
                     all_files_xy['all'][k]['x'].append(temp_df['people'][0][k][0::3])
                     all_files_xy['all'][k]['y'].append(temp_df['people'][0][k][1::3])
         print("Files read, computing mean and stdev")
 
-        # print(all_files_xy)
-
-        for k in keys:
+        for k in self.keys:
             for list in np.array(all_files_xy['all'][k]['x']).T.tolist():
                 # print(list)
                 if "Null" in list:
@@ -281,18 +227,17 @@ class Normalize:
             all_mean_stdev[k] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
 
         # write the computed means and std_dev into json file
-        f = open(data_dir_target / "dir_mean_stdev.json", "w")
+        f = open(self.path_to_target_dir / "all_mean_stdev.json", "w")
         f.write(json.dumps(all_mean_stdev))
         f.close()
 
         return all_mean_stdev
 
-    def normalize(self, all_mean_stdev, data_dir_target, subdirectories, all_files_dictionary_centralized):
+    def normalize(self, all_mean_stdev, all_files_dictionary_centralized):
         all_files = all_files_dictionary_centralized
         all_files_save = {}
         # use mean and stdev to compute values for the json files
-        keys = self.keys
-        for subdir in subdirectories:
+        for subdir in all_files.keys():
             # json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
             #               if pos_json.endswith('.json')]
             all_files_save[subdir] = {}
@@ -304,7 +249,7 @@ class Normalize:
                 # x -> [0::3]
                 # y -> [1:.3]
                 # c -> [2::3] (confidence)
-                for k in keys:
+                for k in self.keys:
                     # x values
                     temp_x = data['people'][0][k][0::3]
                     temp_y = data['people'][0][k][1::3]
@@ -348,35 +293,66 @@ class Normalize:
 
                 all_files_save[subdir][file] = data
 
-
-        dictionary_file_path = data_dir_target / 'all_files_normalized.npy'
-        last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(dictionary_file_path.name)
+        dictionary_file_path = self.path_to_target_dir / 'all_files_normalized.npy'
+        last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
+            dictionary_file_path.name)
         print("Saving normalized results to %s " % last_folder)
         np.save(dictionary_file_path, all_files_save)
 
-                # ## Save our changes to JSON file
-                # jsonFile = open(data_dir_target / subdir / file, "w+")
-                # jsonFile.write(json.dumps(data))
-                # jsonFile.close()
+    def copy_dictionary_to_file(self, subdirectories):
+        dictionary_file_path = self.path_to_target_dir / 'all_files.npy'
+        last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
+            dictionary_file_path.name)
+
+        if dictionary_file_path.is_file():
+            print(".../%s file already exists. Not copying files " % last_folder)
+            return dictionary_file_path
+        else:
+            print("Saving files to %s " % dictionary_file_path)
+
+        # use keys of openpose here
+        all_files = {}
+
+        for subdir in subdirectories:
+            print("Reading files from %s" % subdir)
+            json_files = [pos_json for pos_json in os.listdir(Path(self.path_to_json) / subdir)
+                          if pos_json.endswith('.json')]
+            all_files[subdir] = {}
+            # load files from one folder into dictionary
+            for file in json_files:
+                temp_df = json.load(open(Path(self.path_to_json) / subdir / file))
+                all_files[subdir][file] = temp_df
+
+        np.save(dictionary_file_path, all_files)
+        return Path(dictionary_file_path)
 
 
 if __name__ == '__main__':
-    # origin json files directory
+    # path to numpy file, necessary to run the script
     if len(sys.argv) > 1:
-        path_to_json_dir = sys.argv[1]
+        path_to_numpy_file = sys.argv[1]
     else:
-        print("Set json file directory")
+        print("Set numpy file")
         sys.exit()
 
     # target directory
     path_to_target_dir = ""
     if len(sys.argv) > 2:
         path_to_target_dir = sys.argv[2]
+    else:
+        print("Target directory not set, using default")
+
+    path_to_json_dir=""
+    # origin json files directory
+    if len(sys.argv) > 3:
+        path_to_json_dir = sys.argv[3]
+    else:
+        print("Json files directory not set, using numpy file.")
+
     try:
-        norm = Normalize(path_to_json_dir, path_to_target_dir)
+        norm = Normalize(path_to_numpy_file, path_to_target_dir, path_to_json_dir)
         start_time = time.time()
         norm.main()
         print("--- %.4s seconds ---" % (time.time() - start_time))
-    except NameError:
+    except TypeError:
         print("Set paths")
-
