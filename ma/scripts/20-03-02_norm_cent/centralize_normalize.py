@@ -28,11 +28,6 @@ class Normalize:
         # create target directory
         self.create_folders()
 
-        # read files to dictionary and save dictionary in target directory
-        # removed functionality, use seperate script instead to create numpy
-        # file and specify the path when using this script
-        # dictionary_file_path = self.copy_dictionary_to_file(subdirectories)
-
         # centralize values
         all_files_dictionary_centralized = None
         all_files_dictionary_centralized = self.centralize()
@@ -157,16 +152,15 @@ class Normalize:
                 # jsonFile = open(data_dir_target / subdir / file, "w+")
                 # jsonFile.write(json.dumps(temp_df))
                 # jsonFile.close()
-            # print("%s done" % subdir)
-        print("centralization done")
 
+        print("centralization done")
+        self.save_to_numpy(all_files_dictionary)
+        return all_files_dictionary
+
+    def save_to_numpy(self, all_files_dictionary):
         dictionary_file_path = self.path_to_target_dir / 'all_files_centralized.npy'
         last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
             dictionary_file_path.name)
-
-        # f = open(data_dir_target/ "all_files_dictionary.json", "w")
-        # f.write(json.dumps(all_files_dictionary['bb1Z5dw4N-s-8-rgb_front']))
-        # f.close()
 
         if dictionary_file_path.is_file():
             print(".../%s already exists. Not saving centralized data " % last_folder)
@@ -174,8 +168,6 @@ class Normalize:
         else:
             print("Saving centralized results to %s " % last_folder)
             np.save(dictionary_file_path, all_files_dictionary)
-
-        return all_files_dictionary
 
     def compute_mean_stdev(self, all_files_dictionary_centralized):
 
@@ -192,8 +184,7 @@ class Normalize:
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
         all_files_xy = {'all': {}}
-        mean_stdev_x = []
-        mean_stdev_y = []
+
 
         for subdir in all_files.keys():
             # load files from one folder into dictionary
@@ -209,17 +200,28 @@ class Normalize:
         print("Files read, computing mean and stdev")
 
         for k in self.keys:
+            mean_stdev_x = []
+            mean_stdev_y = []
             for list in np.array(all_files_xy['all'][k]['x']).T.tolist():
-                # print(list)
                 if "Null" in list:
-                    mean_stdev_x.append(["Null", "Null"])
+                    list = [i for i in list if i != "Null"]
+                    if list == []:
+                        mean_stdev_x.append(["Null", "Null"])
+                    else:
+                        list = [float(item) for item in list]
+                        mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
                 else:
                     list = [float(item) for item in list]
                     mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
 
             for list in np.array(all_files_xy['all'][k]['y']).T.tolist():
                 if "Null" in list:
-                    mean_stdev_y.append(["Null", "Null"])
+                    list = [i for i in list if i != "Null"]
+                    if list == []:
+                        mean_stdev_y.append(["Null", "Null"])
+                    else:
+                        list = [float(item) for item in list]
+                        mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
                 else:
                     list = [float(item) for item in list]
                     mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
@@ -299,7 +301,7 @@ class Normalize:
         print("Saving normalized results to %s " % last_folder)
         np.save(dictionary_file_path, all_files_save)
 
-    def copy_dictionary_to_file(self, subdirectories):
+    def save_dictionary_to_file(self, subdirectories):
         dictionary_file_path = self.path_to_target_dir / 'all_files.npy'
         last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
             dictionary_file_path.name)
