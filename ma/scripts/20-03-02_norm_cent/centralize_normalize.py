@@ -1,4 +1,4 @@
-"""norm_cent.py: normalize over all files from each folder of an directory
+"""centralize_normalize.py: normalize over all files from each folder of an directory
 - read keypoints from each folder from an directory and write them into a dictionary
 - compute the mean and stdev of each value
 - use the mean and stdev to normalize the data and write them into new json, repeat for all folders
@@ -348,13 +348,8 @@ if __name__ == '__main__':
     # origin json files directory
     if len(sys.argv) > 3:
         path_to_json_dir = sys.argv[3]
-    else:
-        print("Json files directory not set, using numpy file.")
 
-    try:
-        norm = Normalize(path_to_numpy_file, path_to_target_dir, path_to_json_dir)
-        start_time = time.time()
-        norm.main()
-        print("--- %.4s seconds ---" % (time.time() - start_time))
-    except TypeError:
-        print("Set paths")
+    norm = Normalize(path_to_numpy_file, path_to_target_dir, path_to_json_dir)
+    start_time = time.time()
+    norm.main()
+    print("--- %.4s seconds ---" % (time.time() - start_time))
