@@ -24,13 +24,18 @@ class Normalize:
         self.path_to_json = Path(path_to_json_dir)
         self.keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
 
+        # set global? np.load settings. If not, np.load throws error
+        old = np.load
+        np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
+
     def main(self):
         # create target directory
         self.create_folders()
 
         # centralize values
         all_files_dictionary_centralized = None
-        all_files_dictionary_centralized = self.centralize()
+        # dont use centralization
+        # all_files_dictionary_centralized = self.centralize()
 
         # normalize values
         all_mean_stdev = self.compute_mean_stdev(all_files_dictionary_centralized)
@@ -51,14 +56,13 @@ class Normalize:
 
         # load from .npy file
         print("To centralize load file from \n %s" % self.path_to_numpy_file)
-        old = np.load
-        np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
         all_files_dictionary = np.load(self.path_to_numpy_file).item()
 
         # used keys of openpose here
         for subdir in all_files_dictionary.keys():
 
             all_files = {}
+            round_precision = 5
 
             # load files from one folder into dictionary
             for file in all_files_dictionary[subdir]:
@@ -93,12 +97,12 @@ class Normalize:
                             if x_in_key[idx] == 0:
                                 results_x.append('Null')
                             else:
-                                results_x.append(round(neck_zero_x - x_in_key[idx], 4))
+                                results_x.append(round(neck_zero_x - x_in_key[idx], round_precision))
 
                             if y_in_key[idx] == 0:
                                 results_y.append("Null")
                             else:
-                                results_y.append(round(neck_zero_y - y_in_key[idx], 4))
+                                results_y.append(round(neck_zero_y - y_in_key[idx], round_precision))
 
                         # add Null as legs
                         results_x += (['Null'] * 6)
@@ -108,12 +112,12 @@ class Normalize:
                             if x_in_key[idx] == 0:
                                 results_x.append('Null')
                             else:
-                                results_x.append(round(neck_zero_x - x_in_key[idx], 4))
+                                results_x.append(round(neck_zero_x - x_in_key[idx], round_precision))
 
                             if y_in_key[idx] == 0:
                                 results_y.append("Null")
                             else:
-                                results_y.append(round(neck_zero_y - y_in_key[idx], 4))
+                                results_y.append(round(neck_zero_y - y_in_key[idx], round_precision))
 
                         # add more legs
                         results_x += (['Null'] * 6)
@@ -132,12 +136,12 @@ class Normalize:
                             if x_in_key[idx] == 0:
                                 results_x.append('Null')
                             else:
-                                results_x.append(round(neck_zero_x - x_in_key[idx], 4))
+                                results_x.append(round(neck_zero_x - x_in_key[idx], round_precision))
 
                             if y_in_key[idx] == 0:
                                 results_y.append("Null")
                             else:
-                                results_y.append(round(neck_zero_y - y_in_key[idx], 4))
+                                results_y.append(round(neck_zero_y - y_in_key[idx], round_precision))
 
                         values = []
                         for index in range(len(temp_c)):
@@ -161,30 +165,17 @@ class Normalize:
         dictionary_file_path = self.path_to_target_dir / 'all_files_centralized.npy'
         last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
             dictionary_file_path.name)
+        print("Saving centralized results to %s " % last_folder)
+        np.save(dictionary_file_path, all_files_dictionary)
 
-        if dictionary_file_path.is_file():
-            print(".../%s already exists. Not saving centralized data " % last_folder)
-            return all_files_dictionary
-        else:
-            print("Saving centralized results to %s " % last_folder)
-            np.save(dictionary_file_path, all_files_dictionary)
+    def compute_mean_stdev(self, all_files_dictionary_centralized=None):
 
-    def compute_mean_stdev(self, all_files_dictionary_centralized):
-
-        if all_files_dictionary_centralized is None:
-            # load from .npy file
-            print("To normalize loading from %s file" % self.path_to_numpy_file)
-            old = np.load
-            np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
-            all_files = np.load(self.path_to_numpy_file).item()
-        else:
-            all_files = all_files_dictionary_centralized
+        all_files = self.dictionary_check(all_files_dictionary_centralized)
 
         # use keys of openpose here
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
         all_files_xy = {'all': {}}
-
 
         for subdir in all_files.keys():
             # load files from one folder into dictionary
@@ -235,8 +226,10 @@ class Normalize:
 
         return all_mean_stdev
 
-    def normalize(self, all_mean_stdev, all_files_dictionary_centralized):
-        all_files = all_files_dictionary_centralized
+    def normalize(self, all_mean_stdev, all_files_dictionary_centralized=None):
+
+        all_files = self.dictionary_check(all_files_dictionary_centralized)
+
         all_files_save = {}
         # use mean and stdev to compute values for the json files
         for subdir in all_files.keys():
@@ -300,6 +293,17 @@ class Normalize:
             dictionary_file_path.name)
         print("Saving normalized results to %s " % last_folder)
         np.save(dictionary_file_path, all_files_save)
+
+    def dictionary_check(self, all_files_dictionary_centralized):
+        if all_files_dictionary_centralized is None:
+            # load from .npy file
+            print("To normalize loading from %s file" % self.path_to_numpy_file)
+
+            all_files = np.load(self.path_to_numpy_file).item()
+        else:
+            print("Using internal centralized dictionary")
+            all_files = all_files_dictionary_centralized
+        return all_files
 
     def save_dictionary_to_file(self, subdirectories):
         dictionary_file_path = self.path_to_target_dir / 'all_files.npy'

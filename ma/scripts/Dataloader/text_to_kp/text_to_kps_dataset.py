@@ -1,8 +1,12 @@
 """
-d_loader_test_1.py:
-trying from this tutorial
+text_to_kps_dataset.py:
+Based on that tutorial
 https://stanford.edu/~shervine/blog/pytorch-how-to-generate-data-parallel
 
+Current TODOs:
+- build one dataloader for text to keypoint(s) (kp(s))
+- text, kp and audio need to be mapped to each other
+- read text and kp
 """
 
 import torch
@@ -10,15 +14,16 @@ from torch.utils import data
 import os
 from pathlib import Path
 import json
-import csv
 import pandas as pd
 import numpy as np
+import numbers
 
-class Keypoints(data.Dataset):
+
+class TextKeypointsDataset(data.Dataset):
     'Characterizes a dataset for PyTorch'
-    def __init__(self, path_to_json, path_to_csv, transform=None):
+    def __init__(self, path_to_numpy_file, path_to_csv, transform=None):
         'Initialization'
-        self.path_to_json = path_to_json
+        self.path_to_numpy_file = path_to_numpy_file
         self.path_to_csv = path_to_csv
         self.transform = transform
 
@@ -31,65 +36,53 @@ class Keypoints(data.Dataset):
         df = pd.read_csv(self.path_to_csv)
         saved_column = df['keypoints']
         # print(saved_column)
-
+        print(index)
         'Generates one sample of data'
         # Select sample
         X = []
-        data_dir_origin = Path(self.path_to_json)
-        subdirectories = saved_column
+
+        # load from .npy file
+        old = np.load
+        np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
+        all_files = np.load(self.path_to_numpy_file).item()
+        subdirectory = saved_column[index]
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
+        keys_x = []
+        keys_y = []
+        for file in all_files[subdirectory]:
+            temp_df = all_files[subdirectory][file]
+            # init dictionaries & write x, y values into dictionary
+            for k in keys:
+                keys_x.extend(temp_df['people'][0][k][0::3])
+                keys_y.extend(temp_df['people'][0][k][1::3])
 
-        for subdir in subdirectories:
-            json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
-                          if pos_json.endswith('.json')]
-            # load files from one folder into dictionary
-            keys_x = []
-            keys_y = []
-            for file in json_files:
-                temp_df = json.load(open(data_dir_origin / subdir / file))
-                # init dictionaries & write x, y values into dictionary
-                for k in keys:
-                    keys_x.extend(temp_df['people'][0][k][0::3])
-                    keys_y.extend(temp_df['people'][0][k][1::3])
+        keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
+        keys_y = [x for x in keys_x if isinstance(x, numbers.Number)]
 
-            # [[x0, y0],[x1, y1]]
-            # X.append(list(map(list, zip(keys_x, keys_y))))
+        # [[x0, y0],[x1, y1]]
+        # X.append(list(map(list, zip(keys_x, keys_y))))
 
-            # [x0, xn, y0, yn]
-            X.append(keys_x[:500] + keys_y[:500])
+        X.append(keys_x + keys_y)
+        print(subdirectory)
+        print(np.array(X).size)
+
+        df_text = pd.read_csv(self.path_to_csv)
+        saved_column = df_text['text']
+
+        processed_data = self.preprocess_data(saved_column)  # preprocess
+        processed_line = [int(i) for i in processed_data[index]]
+
+        # TODO: set padding length, currently manually at 10
+        processed_line += ['0'] * (10 - len(processed_line))
+        processed_line = [int(i) for i in processed_line]
 
         if self.transform:
             X = self.transform(X)
-
-        return X[index]
-
-class Text(data.Dataset):
-    'Characterizes a dataset for PyTorch'
-    def __init__(self, path_to_json, path_to_csv, transform):
-        'Initialization'
-        self.path_to_json = path_to_json
-        self.path_to_csv = path_to_csv
-        self.transform = transform
-
-    def __len__(self):
-        'Denotes the total number of samples'
-        with open(self.path_to_csv) as f:
-            return sum(1 for line in f) - 1  # subtract 1, because of header line
-
-    def __getitem__(self, index):
-        df_text = pd.read_csv(self.path_to_csv)
-        saved_column = df_text['text']
-        # print(saved_column)
-
-        processed_data = self.preprocess_data(saved_column)  # preprocess
-        processed_line = [float(i) for i in processed_data[index]]
-        processed_line += ['0'] * (10 - len(processed_line))
-        processed_line = [float(i) for i in processed_line]
-        print(processed_line)
-
-        if self.transform:
             processed_line = self.transform(processed_line)
-        return processed_line
+
+        print(processed_line)
+        # print(X)
+        return processed_line, X[index]
 
     def preprocess_data(self, data):
         dict_DE = {}

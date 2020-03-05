@@ -43,11 +43,11 @@ class SaveFiles:
         last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
             dictionary_file_path.name)
 
-        if dictionary_file_path.is_file():
-            print(".../%s file already exists. Not copying files " % last_folder)
-            return dictionary_file_path
-        else:
-            print("Saving files to %s " % dictionary_file_path)
+        # if dictionary_file_path.is_file():
+        #     print(".../%s file already exists. Not copying files " % last_folder)
+        #     return dictionary_file_path
+        # else:
+        print("Saving files to %s " % dictionary_file_path)
 
         all_files = {}
 
