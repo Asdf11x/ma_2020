@@ -26,6 +26,8 @@ class TextKeypointsDataset(data.Dataset):
         self.path_to_numpy_file = path_to_numpy_file
         self.path_to_csv = path_to_csv
         self.transform = transform
+        old = np.load
+        np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
 
     def __len__(self):
         'Denotes the total number of samples'
@@ -36,16 +38,16 @@ class TextKeypointsDataset(data.Dataset):
         df = pd.read_csv(self.path_to_csv)
         saved_column = df['keypoints']
         # print(saved_column)
-        print(index)
         'Generates one sample of data'
         # Select sample
         X = []
 
         # load from .npy file
-        old = np.load
-        np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
         all_files = np.load(self.path_to_numpy_file).item()
+
+        # get specific subdirectory corresponding to the index
         subdirectory = saved_column[index]
+
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         keys_x = []
         keys_y = []
@@ -56,15 +58,15 @@ class TextKeypointsDataset(data.Dataset):
                 keys_x.extend(temp_df['people'][0][k][0::3])
                 keys_y.extend(temp_df['people'][0][k][1::3])
 
+        # print("length %d x, length %d y" %(len(keys_x), len(keys_y)))
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
         keys_y = [x for x in keys_x if isinstance(x, numbers.Number)]
-
+        # print("length %d x, length %d y" %(len(keys_x), len(keys_y)))
         # [[x0, y0],[x1, y1]]
         # X.append(list(map(list, zip(keys_x, keys_y))))
 
         X.append(keys_x + keys_y)
-        print(subdirectory)
-        print(np.array(X).size)
+        print("%d %s, X.size %d" % (index, subdirectory, np.array(X).size))
 
         df_text = pd.read_csv(self.path_to_csv)
         saved_column = df_text['text']
@@ -73,21 +75,22 @@ class TextKeypointsDataset(data.Dataset):
         processed_line = [int(i) for i in processed_data[index]]
 
         # TODO: set padding length, currently manually at 10
-        processed_line += ['0'] * (10 - len(processed_line))
+        processed_line += ['0'] * (16 - len(processed_line))
         processed_line = [int(i) for i in processed_line]
 
         if self.transform:
             X = self.transform(X)
             processed_line = self.transform(processed_line)
 
-        print(processed_line)
+        # print(processed_line)
         # print(X)
-        return processed_line, X[index]
+        return processed_line, X
 
     def preprocess_data(self, data):
         dict_DE = {}
         dict_DE = self.word2dictionary(data)
         int2word_DE = dict(enumerate(dict_DE))
+        print(int2word_DE)
         word2int_DE = {char: ind for ind, char in int2word_DE.items()}
         text2index_DE = self.text2index(data, word2int_DE)
         te_DE = torch.tensor(text2index_DE[0]).view(-1, 1)

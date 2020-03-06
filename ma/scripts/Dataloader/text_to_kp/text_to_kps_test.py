@@ -21,38 +21,12 @@ class Testy():
 
         it = iter(keypoints_loader)
         first = next(it)
-        print(first[0])
+        # print(first)
+        print(len(first))
+        print(first[0].size())
         print(first[1].size())
-        print(first[1][0][:20])
+        print(first[1][0][0][:20])
 
-        # second = next(it)
-
-        # text = Text(path_to_json="own_data/json", path_to_csv='own_data/sentences.csv', transform=ToTensor())
-        # text_loader = torch.utils.data.DataLoader(text, batch_size=2, shuffle=True, num_workers=4)
-
-
-
-
-        # fig = plt.figure()
-        # print(len(text))
-        # for i in range(len(text)):
-        #     sample = keypoints[i]
-        #     sample_text = text[i]
-        #     print(sample)
-        #     print(torch.tensor(sample, dtype=torch.long).view(-1, 1))
-        #     print(sample_text.shape)
-
-            # print(i, sample.size())
-
-            # ax = plt.subplot(1, 4, i + 1)
-            # plt.tight_layout()
-            # ax.set_title('Sample #{}'.format(i))
-            # ax.axis('off')
-            # show_landmarks(**sample)
-
-            # if i == 3:
-            #     plt.show()
-            #     break
 
 
 if __name__ == '__main__':
