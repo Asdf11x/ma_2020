@@ -4,7 +4,7 @@
 - use the mean and stdev to normalize the data and write them into new json, repeat for all folders
 
 Version description:
-- sticked to row per row and transpose
+- data read in row per row and transpose
 """
 
 import json
@@ -34,11 +34,12 @@ class Normalize:
 
         # centralize values
         all_files_dictionary_centralized = None
-        # dont use centralization
+        # dont use centralization, in current version
         # all_files_dictionary_centralized = self.centralize()
 
         # normalize values
-        all_mean_stdev = self.compute_mean_stdev(all_files_dictionary_centralized)
+        # Either by '_transposed', '_np' or '_column'
+        all_mean_stdev = self.compute_mean_stdev_column(all_files_dictionary_centralized)
         self.normalize(all_mean_stdev, all_files_dictionary_centralized)
 
     def create_folders(self):
@@ -168,7 +169,12 @@ class Normalize:
         print("Saving centralized results to %s " % last_folder)
         np.save(dictionary_file_path, all_files_dictionary)
 
-    def compute_mean_stdev(self, all_files_dictionary_centralized=None):
+    def compute_mean_stdev_transposed(self, all_files_dictionary_centralized=None):
+        """
+        Read data row per row and transpose to computed mean and stdev
+        :param all_files_dictionary_centralized:
+        :return:
+        """
 
         all_files = self.dictionary_check(all_files_dictionary_centralized)
 
@@ -213,6 +219,135 @@ class Normalize:
                     else:
                         list = [float(item) for item in list]
                         mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
+                else:
+                    list = [float(item) for item in list]
+                    mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
+
+            all_mean_stdev[k] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
+
+        # write the computed means and std_dev into json file
+        f = open(self.path_to_target_dir / "all_mean_stdev.json", "w")
+        f.write(json.dumps(all_mean_stdev))
+        f.close()
+
+        return all_mean_stdev
+
+    def compute_mean_stdev_np(self, all_files_dictionary_centralized=None):
+        """
+        Read data column per column with np arrays and np.c_ to computed mean and stdev
+        :param all_files_dictionary_centralized:
+        :return:
+        """
+
+        all_files = self.dictionary_check(all_files_dictionary_centralized)
+
+        # use keys of openpose here
+        all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
+        once = 1
+        all_files_xy = {'all': {}}
+
+        for subdir in all_files.keys():
+            # load files from one folder into dictionary
+            for file in all_files[subdir]:
+                temp_df = all_files[subdir][file]
+                if once == 1:
+                    for k in self.keys:
+                        all_files_xy['all'][k] = {'x': np.empty((len(temp_df['people'][0][k][0::3]), 0), float),
+                                                  'y': np.empty((len(temp_df['people'][0][k][1::3]), 0), float)}
+                        # all_files_xy['all'][k] = {'x': [[] for x in range(len(temp_df['people'][0][k][0::3]))],
+                        #                           'y': [[] for x in range(len(temp_df['people'][0][k][1::3]))]}
+
+                    once = 0
+
+                for k in self.keys:
+                    all_files_xy['all'][k]['x'] = np.c_[
+                        all_files_xy['all'][k]['x'], np.array(temp_df['people'][0][k][0::3])]
+                    all_files_xy['all'][k]['y'] = np.c_[
+                        all_files_xy['all'][k]['y'], np.array(temp_df['people'][0][k][1::3])]
+                    # for i in range(len(temp_df['people'][0][k][0::3])):
+                    #     all_files_xy['all'][k]['x'][i].append(temp_df['people'][0][k][0::3][i])
+                    #     all_files_xy['all'][k]['y'][i].append(temp_df['people'][0][k][1::3][i])
+
+                # for k in keys:
+                #     all_files_xy['all'][k]['x'] = all_files_xy['all'][k]['x'].tolist()
+
+        # print(all_files_xy)
+        # f = open(data_dir_target / "dir_mean_stdev.json", "w")
+        # f.write(json.dumps(all_files_xy))
+        # # json.dump(b, codecs.open(file_path, 'w', encoding='utf-8'), separators=(',', ':'), sort_keys=True, indent=4)
+        # f.close()
+        print("Files read, computing mean and stdev")
+
+        for k in self.keys:
+            mean_stdev_x = []
+            mean_stdev_y = []
+            for list in np.array(all_files_xy['all'][k]['x']):
+                if "Null" in list:
+                    mean_stdev_x.append(["Null", "Null"])
+                else:
+                    list = [float(item) for item in list]
+                    mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
+
+            for list in np.array(all_files_xy['all'][k]['y']):
+                if "Null" in list:
+                    mean_stdev_y.append(["Null", "Null"])
+                else:
+                    list = [float(item) for item in list]
+                    mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
+
+            all_mean_stdev[k] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
+
+        # write the computed means and std_dev into json file
+        f = open(self.path_to_target_dir / "all_mean_stdev.json", "w")
+        f.write(json.dumps(all_mean_stdev))
+        f.close()
+
+        return all_mean_stdev
+
+    def compute_mean_stdev_column(self, all_files_dictionary_centralized=None):
+        """
+        Read data column per column with lists and for each loop  to computed mean and stdev
+        :param all_files_dictionary_centralized:
+        :return:
+        """
+        all_files = self.dictionary_check(all_files_dictionary_centralized)
+
+        # use keys of openpose here
+        all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
+        once = 1
+        all_files_xy = {'all': {}}
+
+        for subdir in all_files.keys():
+            # load files from one folder into dictionary
+            for file in all_files[subdir]:
+                temp_df = all_files[subdir][file]
+                if once == 1:
+                    for k in self.keys:
+                        all_files_xy['all'][k] = {'x': [[] for x in range(len(temp_df['people'][0][k][0::3]))],
+                                                  'y': [[] for x in range(len(temp_df['people'][0][k][1::3]))]}
+
+                    once = 0
+
+                for k in self.keys:
+                    for i in range(len(temp_df['people'][0][k][0::3])):
+                        all_files_xy['all'][k]['x'][i].append(temp_df['people'][0][k][0::3][i])
+                        all_files_xy['all'][k]['y'][i].append(temp_df['people'][0][k][1::3][i])
+
+        print("Files read, computing mean and stdev")
+
+        for k in self.keys:
+            mean_stdev_x = []
+            mean_stdev_y = []
+            for list in np.array(all_files_xy['all'][k]['x']):
+                if "Null" in list:
+                    mean_stdev_x.append(["Null", "Null"])
+                else:
+                    list = [float(item) for item in list]
+                    mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
+
+            for list in np.array(all_files_xy['all'][k]['y']):
+                if "Null" in list:
+                    mean_stdev_y.append(["Null", "Null"])
                 else:
                     list = [float(item) for item in list]
                     mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
