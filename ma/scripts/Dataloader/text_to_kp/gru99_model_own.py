@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 import numpy as np
 import pandas as pd
+import random
 
 import os
 import re
@@ -33,22 +34,22 @@ EOS_token = 1
 MAX_LENGTH = 20
 
 
-#initialize Lang Class
+# initialize Lang Class
 class Lang:
     def __init__(self):
-        #initialize containers to hold the words and corresponding index
+        # initialize containers to hold the words and corresponding index
         self.word2index = {}
         self.word2count = {}
         self.index2word = {0: "SOS", 1: "EOS"}
         self.n_words = 2  # Count SOS and EOS
 
-#split a sentence into words and add it to the container
+    # split a sentence into words and add it to the container
     def addSentence(self, sentence):
         for word in sentence.split(' '):
             self.addWord(word)
 
-#If the word is not in the container, the word will be added to it,
-#else, update the word counter
+    # If the word is not in the container, the word will be added to it,
+    # else, update the word counter
     def addWord(self, word):
         if word not in self.word2index:
             self.word2index[word] = self.n_words
@@ -59,7 +60,7 @@ class Lang:
             self.word2count[word] += 1
 
 
-#Normalize every sentence
+# Normalize every sentence
 def normalize_sentence(df, lang):
     sentence = df[lang].str.lower()
     sentence = sentence.str.replace('[^A-Za-z\s]+', '')
@@ -78,9 +79,12 @@ def read_file(loc, lang1, lang2):
     df = pd.read_csv(loc, delimiter='\t', header=None, names=[lang1, lang2])
     return df
 
-def process_data(lang1,lang2):
+
+def process_data(lang1, lang2):
     # df = read_file('text/%s-%s.txt' % (lang1, lang2), lang1, lang2)
-    df = read_file(r'C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\Dataloader\text_to_kp\text\eng-ind.txt', lang1, lang2)
+    df = read_file(
+        r'C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\Dataloader\text_to_kp\text\eng-ind.txt',
+        lang1, lang2)
     print("Read %s sentence pairs" % len(df))
     sentence1, sentence2 = read_sentence(df, lang1, lang2)
 
@@ -96,13 +100,16 @@ def process_data(lang1,lang2):
 
     return source, target, pairs
 
+
 def indexesFromSentence(lang, sentence):
     return [lang.word2index[word] for word in sentence.split(' ')]
+
 
 def tensorFromSentence(lang, sentence):
     indexes = indexesFromSentence(lang, sentence)
     indexes.append(EOS_token)
     return torch.tensor(indexes, dtype=torch.long, device=device).view(-1, 1)
+
 
 def tensorsFromPair(input_lang, output_lang, pair):
     input_tensor = tensorFromSentence(input_lang, pair[0])
@@ -121,7 +128,7 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
 
         # initialize the embedding layer with input and embbed dimention
-        self.embedding = nn.Embedding(input_dim+1, self.embbed_dim)
+        self.embedding = nn.Embedding(input_dim + 1, self.embbed_dim)
         # intialize the GRU to take the input dimetion of embbed, and output dimention of hidden and
         # set the number of gru layers
         self.gru = nn.GRU(self.embbed_dim, self.hidden_dim, num_layers=self.num_layers)
@@ -250,7 +257,6 @@ def trainModel(model, source, target, pairs, num_iteration=20000):
 
         total_loss_iterations += loss
 
-
         if iter % 5000 == 0:
             avarage_loss = total_loss_iterations / 5000
             total_loss_iterations = 0
@@ -291,6 +297,7 @@ def evaluateRandomly(model, source, target, pairs, n=10):
         output_sentence = ' '.join(output_words)
         print('predicted{}'.format(output_sentence))
 
+
 lang1 = 'eng'
 lang2 = 'ind'
 # source, target, pairs = process_data(lang1, lang2)
@@ -307,8 +314,6 @@ lang2 = 'ind'
 # print(target.n_words)
 
 
-
-
 # print model
 # print(encoder)
 # print(decoder)
@@ -322,18 +327,17 @@ first = next(it)
 
 # print(first[1])
 
-in_ten = torch.tensor(first[0], dtype=torch.long).view(-1, 1)
-# out_ten = torch.tensor(first[0], dtype=torch.long).view(-1, 1)
+in_ten = torch.as_tensor(first[0], dtype=torch.long).view(-1, 1)
 # 3 dim for gru
-out_ten = torch.tensor(first[1][0][0][:16], dtype=torch.float).view(-1, 1)
-out_ten = torch.tensor(first[1], dtype=torch.float).view(-1, 1)
+out_ten = torch.as_tensor(first[1][0][0][:16], dtype=torch.float).view(-1, 1)
+out_ten = torch.as_tensor(first[1], dtype=torch.float).view(-1, 1)
 
-print(in_ten)
-print(out_ten[:20])
+# print(in_ten)
+# print(out_ten[:20])
 
-print("in %d, out %d" %(in_ten.size()[0],out_ten.size()[0]))
+print("in %d, out %d" % (in_ten.size()[0], out_ten.size()[0]))
 
-#print number of words
+# print number of words
 # input_size = first[0].size()[1]
 # output_size = first[1].size()[2]
 
@@ -345,15 +349,13 @@ output_size = out_ten.size()[0]
 embed_size = 16
 hidden_size = 512
 num_layers = 1
-num_iteration = 100
+num_iteration = 2
 
-#create encoder-decoder model
+# create encoder-decoder model
 encoder = Encoder(input_size, hidden_size, embed_size, num_layers)
-decoder = Decoder(output_size, hidden_size, embed_size, num_layers)
+decoder = Decoder(20, hidden_size, embed_size, num_layers)
 
 model = Seq2Seq(encoder, decoder, device).to(device)
-
-
 
 # print("in.shape"+str(in_ten.shape))
 # print(in_ten)
@@ -361,33 +363,51 @@ model = Seq2Seq(encoder, decoder, device).to(device)
 # print(out_ten)
 
 
-model.train()
-model_optimizer = optim.SGD(model.parameters(), lr=0.01)
-criterion = nn.MSELoss()
 
 # train
 def train_own(model, input_tensor, target_tensor, model_optimizer, criterion):
     model_optimizer.zero_grad()
     loss = 0
-    output = model(in_ten, out_ten)
+    # output = model(in_ten, out_ten)
+    output = model(input_tensor, target_tensor)
     num_iter = output.size(0)
-    print(output.size(0))
+    # print(output.size(0))
+
+    print(target_tensor.size())
 
     # calculate the loss from a predicted sentence with the expected result
     for ot in range(num_iter):
-        loss += criterion(output[ot], out_ten[ot])
+        loss += criterion(output[ot], target_tensor.view(-1, 20))
 
     loss.backward()
     model_optimizer.step()
     epoch_loss = loss.item() / num_iter
 
-    print(epoch_loss)
+    # print(epoch_loss)
     return epoch_loss
 
+
+model.train()
+model_optimizer = optim.SGD(model.parameters(), lr=0.01)
+criterion = nn.MSELoss()
+total_loss_iterations = 0
+
 for iter in range(1, num_iteration + 1):
-    train_own(model, input_tensor, target_tensor, optimizer, criterion)
+    nexty = next(it)
+    rnd = random.randint(20, 50)
 
+    in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
+    out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]
+    print("input.size %d, output.size %d" % (in_ten.size()[0], out_ten.size()[0]))
 
+    loss = train_own(model, in_ten, out_ten, model_optimizer, criterion)
+
+    total_loss_iterations += loss
+
+    if iter % 1 == 0:
+        avarage_loss = total_loss_iterations / 1
+        total_loss_iterations = 0
+        print('%d %.2f' % (iter, avarage_loss))
 
 # model = trainModel(model, source, target, pairs, num_iteration)
 # evaluateRandomly(model, source, target, pairs)
