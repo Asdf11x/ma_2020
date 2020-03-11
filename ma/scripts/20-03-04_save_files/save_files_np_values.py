@@ -39,36 +39,48 @@ class SaveFiles:
         return data_dir_target, subdirectories
 
     def copy_dictionary_to_file(self, data_dir_target, subdirectories):
-        dictionary_file_path = data_dir_target / 'all_files.npy'
+        dictionary_file_path = data_dir_target / 'all_files_np.npy'
         last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
             dictionary_file_path.name)
-
         self.print_memory_usage()
-
         print("Saving files to %s " % dictionary_file_path)
 
         all_files = {}
-
+        index = 0
+        dirs_list = []
         for subdir in subdirectories:
             self.print_memory_usage()
-
             print("Reading files from %s" % subdir)
             json_files = [pos_json for pos_json in os.listdir(self.path_to_json / subdir)
                           if pos_json.endswith('.json')]
-            all_files[subdir] = {}
+            # all_files[subdir] = {}
+            files_list = []
+
             # load files from one folder into dictionary
             for file in json_files:
                 temp_df = json.load(open(self.path_to_json / subdir / file))
-                all_files[subdir][file] = temp_df
+                keypoints = []
+
+                for k in self.keys:
+                    xy = np.delete(temp_df['people'][0][k], np.arange(2, len(temp_df['people'][0][k]), 3, dtype=np.float32))
+                    keypoints.append(xy)
+
+                files_list.append(keypoints)
+
+            dirs_list.append(files_list)
+
+            index += 1
+            print("%d of %d" % (index, len(subdirectories)))
 
         self.print_memory_usage()
 
-        np.save(dictionary_file_path, all_files)
+        np.save(dictionary_file_path, dirs_list)
         return Path(dictionary_file_path)
 
     def print_memory_usage(self):
         process = psutil.Process(os.getpid())
         print("Current memory usage: %s MB" % str(process.memory_info().rss / 1000000))  # divided to get mb
+
 if __name__ == '__main__':
     # origin json files directory
     if len(sys.argv) > 1:
