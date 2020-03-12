@@ -48,6 +48,7 @@ class SaveFiles:
         print("Saving files to %s " % dictionary_file_path)
 
         all_files = {}
+        index = 0
 
         for subdir in subdirectories:
             self.print_memory_usage()
@@ -61,6 +62,8 @@ class SaveFiles:
                 temp_df = json.load(open(self.path_to_json / subdir / file))
                 all_files[subdir][file] = temp_df
 
+            index += 1
+            print("%d of %d" % (index, len(subdirectories)))
         self.print_memory_usage()
 
         np.save(dictionary_file_path, all_files)
