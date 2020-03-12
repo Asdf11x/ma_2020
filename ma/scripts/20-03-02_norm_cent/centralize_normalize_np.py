@@ -189,8 +189,6 @@ class Normalize:
         self.print_memory_usage()
         # use keys of openpose here
         # all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
-        once = 1
-        all_files_xy = []
 
         # keys
         # | - key (pose, face hands)
@@ -205,13 +203,11 @@ class Normalize:
         for subdir in all_files:
             # load files from one folder into dictionary
             for file in subdir:
-                # temp_df = file
                 # for key in file:
                 for i in range(len(file)):
                     # print(file[i][0::2])
                     keys[i][0].append(file[i][0::2].tolist())
                     keys[i][1].append(file[i][1::2].tolist())
-        # print(keys)
 
         print("Files read, computing mean and stdev")
 
@@ -220,8 +216,6 @@ class Normalize:
             mean_stdev_x = []
             mean_stdev_y = []
             for list in np.array(keys[i][0]).T:
-                # print(*list)
-
                 if "Null" in list:
                     list = [i for i in list if i != "Null"]
                     if list == []:
@@ -247,8 +241,6 @@ class Normalize:
                     mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
 
             all_mean_stdev[i] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
-
-        # print(all_mean_stdev)
 
         # write the computed means and std_dev into json file
         f = open(self.path_to_target_dir / "all_mean_stdev.json", "w")
@@ -383,16 +375,12 @@ class Normalize:
     def normalize(self, all_mean_stdev, all_files_dictionary_centralized=None):
 
         all_files = self.dictionary_check(all_files_dictionary_centralized)
-        # print(all_files.tolist())
         self.print_memory_usage()
         dirs_list = []
-        # all_files_save = {}
         # use mean and stdev to compute values for the json files
         for subdir in all_files:
-            # all_files_save[subdir] = {}
             files_list = []
             for file in subdir:
-                data = file
                 keypoints = []
 
                 # x -> [0::3]
@@ -403,10 +391,9 @@ class Normalize:
                     temp_x = file[k][0::2]
                     temp_y = file[k][1::2]
 
-                    # get x values and normalize it
+                    # get x, y values and normalize it
                     for index in range(len(temp_x)):
                         mean_x = all_mean_stdev[k][0][0][index]
-                        # print(mean_x)
                         stdev_x = all_mean_stdev[k][0][1][index]
 
                         mean_y = all_mean_stdev[k][1][0][index]

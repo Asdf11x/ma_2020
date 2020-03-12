@@ -45,7 +45,6 @@ class SaveFiles:
         self.print_memory_usage()
         print("Saving files to %s " % dictionary_file_path)
 
-        all_files = {}
         index = 0
         dirs_list = []
         for subdir in subdirectories:
@@ -53,7 +52,6 @@ class SaveFiles:
             print("Reading files from %s" % subdir)
             json_files = [pos_json for pos_json in os.listdir(self.path_to_json / subdir)
                           if pos_json.endswith('.json')]
-            # all_files[subdir] = {}
             files_list = []
 
             # load files from one folder into dictionary
@@ -62,18 +60,16 @@ class SaveFiles:
                 keypoints = []
 
                 for k in self.keys:
+                    # drop confidence
                     xy = np.delete(temp_df['people'][0][k], np.arange(2, len(temp_df['people'][0][k]), 3, dtype=np.float32))
                     keypoints.append(xy)
-
                 files_list.append(keypoints)
-
             dirs_list.append(files_list)
 
             index += 1
             print("%d of %d" % (index, len(subdirectories)))
 
         self.print_memory_usage()
-
         np.save(dictionary_file_path, dirs_list)
         return Path(dictionary_file_path)
 
