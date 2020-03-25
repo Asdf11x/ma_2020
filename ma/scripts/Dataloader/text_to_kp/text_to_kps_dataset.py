@@ -60,13 +60,16 @@ class TextKeypointsDataset(data.Dataset):
 
         # print("length %d x, length %d y" %(len(keys_x), len(keys_y)))
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
-        keys_y = [x for x in keys_x if isinstance(x, numbers.Number)]
+        keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
         # print("length %d x, length %d y" %(len(keys_x), len(keys_y)))
         # [[x0, y0],[x1, y1]]
         # X.append(list(map(list, zip(keys_x, keys_y))))
 
+        # print(keys_x)
+        # print(keys_y)
+
         X.append(keys_x + keys_y)
-        print("%d %s, X.size %d" % (index, subdirectory, np.array(X).size))
+        # print("%d %s, X.size %d" % (index, subdirectory, np.array(X).size))
 
         df_text = pd.read_csv(self.path_to_csv)
         saved_column = df_text['text']
@@ -74,9 +77,10 @@ class TextKeypointsDataset(data.Dataset):
         processed_data = self.preprocess_data(saved_column)  # preprocess
         processed_line = [int(i) for i in processed_data[index]]
 
-        # TODO: set padding length, currently manually at 10
-        processed_line += ['0'] * (16 - len(processed_line))
-        processed_line = [int(i) for i in processed_line]
+        # Set padding length
+        # padding_length = 20
+        # processed_line += ['0'] * (padding_length - len(processed_line))
+        # processed_line = [int(i) for i in processed_line]
 
         if self.transform:
             X = self.transform(X)
@@ -90,7 +94,7 @@ class TextKeypointsDataset(data.Dataset):
         dict_DE = {}
         dict_DE = self.word2dictionary(data)
         int2word_DE = dict(enumerate(dict_DE))
-        print(int2word_DE)
+        # print(int2word_DE)
         word2int_DE = {char: ind for ind, char in int2word_DE.items()}
         text2index_DE = self.text2index(data, word2int_DE)
         te_DE = torch.tensor(text2index_DE[0]).view(-1, 1)

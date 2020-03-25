@@ -238,10 +238,10 @@ def clacModel(model, input_tensor, target_tensor, model_optimizer, criterion):
 
 
 def trainModel(model, source, target, pairs, num_iteration=20000):
-    model.train_own()
+    model.train()
 
     optimizer = optim.SGD(model.parameters(), lr=0.01)
-    criterion = nn.NLLLoss()
+    criterion = nn.MSELoss()
     total_loss_iterations = 0
 
     training_pairs = [tensorsFromPair(source, target, random.choice(pairs))
@@ -318,42 +318,37 @@ lang2 = 'ind'
 # print(encoder)
 # print(decoder)
 
-text2kp = TextKeypointsDataset(path_to_numpy_file="own_data/all_files_normalized.npy",
-                               path_to_csv='own_data/sentences.csv', transform=ToTensor())
+text2kp = TextKeypointsDataset(path_to_numpy_file="own_data_morse/all_files_normalized.npy",
+                               path_to_csv='own_data_morse/sentences.csv', transform=ToTensor())
 keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
 
 it = iter(keypoints_loader)
-first = next(it)
-
-# print(first[1])
-
-in_ten = torch.as_tensor(first[0], dtype=torch.long).view(-1, 1)
-# 3 dim for gru
-out_ten = torch.as_tensor(first[1][0][0][:16], dtype=torch.float).view(-1, 1)
-out_ten = torch.as_tensor(first[1], dtype=torch.float).view(-1, 1)
+# first = next(it)
+# in_ten = torch.as_tensor(first[0], dtype=torch.long).view(-1, 1)
+# out_ten = torch.as_tensor(first[1], dtype=torch.float).view(-1, 1)
 
 # print(in_ten)
 # print(out_ten[:20])
 
-print("in %d, out %d" % (in_ten.size()[0], out_ten.size()[0]))
+# print("in %d, out %d" % (in_ten.size()[0], out_ten.size()[0]))
 
 # print number of words
 # input_size = first[0].size()[1]
 # output_size = first[1].size()[2]
 
-input_size = in_ten.size()[0]
-output_size = out_ten.size()[0]
+# input_size = in_ten.size()[0]
+# output_size = out_ten.size()[0]
 
 # print('Input : {} Output : {}'.format(input_size, output_size))
 
 embed_size = 16
 hidden_size = 512
 num_layers = 1
-num_iteration = 2
+num_iteration = 3
 
 # create encoder-decoder model
-encoder = Encoder(input_size, hidden_size, embed_size, num_layers)
-decoder = Decoder(20, hidden_size, embed_size, num_layers)
+encoder = Encoder(2, hidden_size, embed_size, num_layers)
+decoder = Decoder(6, hidden_size, embed_size, num_layers)
 
 model = Seq2Seq(encoder, decoder, device).to(device)
 
@@ -367,18 +362,20 @@ model = Seq2Seq(encoder, decoder, device).to(device)
 # train
 def train_own(model, input_tensor, target_tensor, model_optimizer, criterion):
     model_optimizer.zero_grad()
-    loss = 0
+    loss = 0.0
     # output = model(in_ten, out_ten)
     output = model(input_tensor, target_tensor)
     num_iter = output.size(0)
     # print(output.size(0))
 
-    print(target_tensor.size())
+    # print(target_tensor.size())
 
     # calculate the loss from a predicted sentence with the expected result
     for ot in range(num_iter):
-        loss += criterion(output[ot], target_tensor.view(-1, 20))
-
+        # print("output %s, target %s" % (str(output.size()), str(target_tensor.size())))
+        # print("output %s, target %s" % (str(output[ot].size()), str(target_tensor[ot].size())))
+        # print(output)
+        loss += criterion(output[ot], target_tensor[ot])
     loss.backward()
     model_optimizer.step()
     epoch_loss = loss.item() / num_iter
@@ -392,22 +389,52 @@ model_optimizer = optim.SGD(model.parameters(), lr=0.01)
 criterion = nn.MSELoss()
 total_loss_iterations = 0
 
-for iter in range(1, num_iteration + 1):
+for idx in range(1, num_iteration + 1):
     nexty = next(it)
     rnd = random.randint(20, 50)
 
     in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
-    out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]
-    print("input.size %d, output.size %d" % (in_ten.size()[0], out_ten.size()[0]))
+    out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
+    print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
 
     loss = train_own(model, in_ten, out_ten, model_optimizer, criterion)
 
     total_loss_iterations += loss
 
-    if iter % 1 == 0:
+    if idx % 1 == 0:
         avarage_loss = total_loss_iterations / 1
         total_loss_iterations = 0
-        print('%d %.2f' % (iter, avarage_loss))
+        print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
 
 # model = trainModel(model, source, target, pairs, num_iteration)
 # evaluateRandomly(model, source, target, pairs)
+
+# evaluate (kommt nur scheisse raus)
+it = iter(keypoints_loader)
+nexty = next(it)
+
+with torch.no_grad():
+    in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
+    out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
+    print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
+    print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
+    print("---"*9)
+    decoded_words = []
+
+    output = model(in_ten, out_ten)
+    print("output.size: %d" % output.size(0))
+    print(output)
+    print("---" * 10)
+    for ot in range(output.size(0)):
+        topv, topi = output[ot].topk(1)
+
+        print(topv)
+        print(topi)
+
+        if topi[0].item() == EOS_token:
+            decoded_words.append('<EOS>')
+            break
+        else:
+            decoded_words.append(out_ten)
+        # print(decoded_words)
+
