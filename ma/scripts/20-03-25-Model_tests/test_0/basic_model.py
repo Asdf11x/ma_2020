@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
 
-X = torch.tensor(([2, 9], [1, 5], [3, 6]), dtype=torch.float) # 3 X 2 tensor
-y = torch.tensor(([92], [100], [89]), dtype=torch.float) # 3 X 1 tensor
-xPredicted = torch.tensor(([4, 8]), dtype=torch.float) # 1 X 2 tensor
+A = [-5, -5, 0, 5, 5, -5]
+B = [-5, -5, -5, 5, 5, 0]
+C = [-4, 0, 4, 4, 4, -4]
+y = torch.tensor((A, B, C), dtype=torch.float) # 3 X 2 tensor
+X = torch.tensor(([0], [1], [2]), dtype=torch.float) # 3 X 1 tensor
+xPredicted = torch.tensor(([2]), dtype=torch.float) # 1 X 2 tensor
 
 print(X.size())
 print(y.size())
@@ -21,9 +24,9 @@ class Neural_Network(nn.Module):
         super(Neural_Network, self).__init__()
         # parameters
         # TODO: parameters can be parameterized instead of declaring them here
-        self.inputSize = 2
-        self.outputSize = 1
-        self.hiddenSize = 3
+        self.inputSize = 1
+        self.outputSize = 6
+        self.hiddenSize = 10
 
         # weights
         self.W1 = torch.randn(self.inputSize, self.hiddenSize)  # 2 X 3 tensor
@@ -57,8 +60,9 @@ class Neural_Network(nn.Module):
         self.backward(X, y, o)
 
     def saveWeights(self, model):
+        pass
         # we will use the PyTorch internal storage functions
-        torch.save(model, "NN")
+        # torch.save(model, "NN")
         # you can reload model with all the weights and so forth with:
         # torch.load("NN")
 
