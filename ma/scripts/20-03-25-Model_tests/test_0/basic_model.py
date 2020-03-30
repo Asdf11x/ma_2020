@@ -4,6 +4,8 @@ Ich wollte da den output von so pytorch modellen testen, aber das heir ist ein h
 die angepassten daten so schlecht ausgegeben werden.
 
 egal ob sigmoid oder tanh, die daten muessten eig auch ohne skalierung ansatzweise richtig sein?
+
+source: https://medium.com/dair-ai/a-simple-neural-network-from-scratch-with-pytorch-and-google-colab-c7f3830618e0
 """
 
 import torch
@@ -149,17 +151,17 @@ class Neural_Network(nn.Module):
 
         ax.plot(values, results, label="prediction")
         ax.plot(values, values, label="ground truth")
-
-        ax.set(xlabel='time (s)', ylabel='voltage (mV)',
-               title='About as simple as it gets, folks')
+        ax.set(xlabel='x', ylabel='y',
+               title='Basic model output')
         ax.grid()
+        ax.legend()
 
         fig.savefig("test.png")
         plt.show()
 
 
 NN = Neural_Network()
-for i in range(20):  # trains the NN 1,000 times
+for i in range(1000):  # trains the NN 1,000 times
     print("#" + str(i) + " Loss: " + str(torch.mean((y - NN(X)) ** 2).detach().item()))  # mean sum squared loss
     NN.train(X, y)
 # NN.saveWeights(NN)
