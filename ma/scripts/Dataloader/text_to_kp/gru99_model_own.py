@@ -29,93 +29,6 @@ import torch.utils.data
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-SOS_token = 0
-EOS_token = 1
-MAX_LENGTH = 20
-
-
-# initialize Lang Class
-class Lang:
-    def __init__(self):
-        # initialize containers to hold the words and corresponding index
-        self.word2index = {}
-        self.word2count = {}
-        self.index2word = {0: "SOS", 1: "EOS"}
-        self.n_words = 2  # Count SOS and EOS
-
-    # split a sentence into words and add it to the container
-    def addSentence(self, sentence):
-        for word in sentence.split(' '):
-            self.addWord(word)
-
-    # If the word is not in the container, the word will be added to it,
-    # else, update the word counter
-    def addWord(self, word):
-        if word not in self.word2index:
-            self.word2index[word] = self.n_words
-            self.word2count[word] = 1
-            self.index2word[self.n_words] = word
-            self.n_words += 1
-        else:
-            self.word2count[word] += 1
-
-
-# Normalize every sentence
-def normalize_sentence(df, lang):
-    sentence = df[lang].str.lower()
-    sentence = sentence.str.replace('[^A-Za-z\s]+', '')
-    sentence = sentence.str.normalize('NFD')
-    sentence = sentence.str.encode('ascii', errors='ignore').str.decode('utf-8')
-    return sentence
-
-
-def read_sentence(df, lang1, lang2):
-    sentence1 = normalize_sentence(df, lang1)
-    sentence2 = normalize_sentence(df, lang2)
-    return sentence1, sentence2
-
-
-def read_file(loc, lang1, lang2):
-    df = pd.read_csv(loc, delimiter='\t', header=None, names=[lang1, lang2])
-    return df
-
-
-def process_data(lang1, lang2):
-    # df = read_file('text/%s-%s.txt' % (lang1, lang2), lang1, lang2)
-    df = read_file(
-        r'C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\Dataloader\text_to_kp\text\eng-ind.txt',
-        lang1, lang2)
-    print("Read %s sentence pairs" % len(df))
-    sentence1, sentence2 = read_sentence(df, lang1, lang2)
-
-    source = Lang()
-    target = Lang()
-    pairs = []
-    for i in range(len(df)):
-        if len(sentence1[i].split(' ')) < MAX_LENGTH and len(sentence2[i].split(' ')) < MAX_LENGTH:
-            full = [sentence1[i], sentence2[i]]
-            source.addSentence(sentence1[i])
-            target.addSentence(sentence2[i])
-            pairs.append(full)
-
-    return source, target, pairs
-
-
-def indexesFromSentence(lang, sentence):
-    return [lang.word2index[word] for word in sentence.split(' ')]
-
-
-def tensorFromSentence(lang, sentence):
-    indexes = indexesFromSentence(lang, sentence)
-    indexes.append(EOS_token)
-    return torch.tensor(indexes, dtype=torch.long, device=device).view(-1, 1)
-
-
-def tensorsFromPair(input_lang, output_lang, pair):
-    input_tensor = tensorFromSentence(input_lang, pair[0])
-    target_tensor = tensorFromSentence(output_lang, pair[1])
-    return (input_tensor, target_tensor)
-
 
 class Encoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, embbed_dim, num_layers):
@@ -144,14 +57,17 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         # set the encoder output dimension, embed dimension, hidden dimension, and number of layers
-        self.embbed_dim = embbed_dim
+        self.emb_dim = embbed_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.num_layers = num_layers
 
-        # initialize every layer with the appropriate dimension. For the decoder layer, it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
-        self.embedding = nn.Embedding(output_dim, self.embbed_dim)
-        self.gru = nn.GRU(self.embbed_dim, self.hidden_dim, num_layers=self.num_layers)
+        # initialize every layer with the appropriate dimension. For the decoder layer,
+        # it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
+        self.embedding = nn.Embedding(output_dim, self.emb_dim)
+        print(self.embedding)
+        self.gru = nn.GRU(self.emb_dim, self.hidden_dim, num_layers=self.num_layers)
+        print(self.gru)
         self.out = nn.Linear(self.hidden_dim, output_dim)
         self.softmax = nn.LogSoftmax(dim=1)
 
@@ -166,7 +82,7 @@ class Decoder(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder, device, MAX_LENGTH=MAX_LENGTH):
+    def __init__(self, encoder, decoder, device):
         super().__init__()
 
         # initialize the encoder and decoder
@@ -209,232 +125,106 @@ class Seq2Seq(nn.Module):
         return outputs
 
 
-teacher_forcing_ratio = 0.5
+class RunModel:
 
+    def init_model(self):
+        # create encoder-decoder model
+        encoder = Encoder(2, hidden_size, embed_size, num_layers)
+        decoder = Decoder(6, hidden_size, embed_size, num_layers)
+        model = Seq2Seq(encoder, decoder, device).to(device)
+        return model
 
-def clacModel(model, input_tensor, target_tensor, model_optimizer, criterion):
-    model_optimizer.zero_grad()
-
-    input_length = input_tensor.size(0)
-    loss = 0
-    epoch_loss = 0
-    # print(input_tensor.shape)
-    print(input_tensor.shape)
-    print(target_tensor.shape)
-    output = model(input_tensor, target_tensor)
-
-    num_iter = output.size(0)
-    print(num_iter)
-
-    # calculate the loss from a predicted sentence with the expected result
-    for ot in range(num_iter):
-        loss += criterion(output[ot], target_tensor[ot])
-
-    loss.backward()
-    model_optimizer.step()
-    epoch_loss = loss.item() / num_iter
-
-    return epoch_loss
-
-
-def trainModel(model, source, target, pairs, num_iteration=20000):
-    model.train()
-
-    optimizer = optim.SGD(model.parameters(), lr=0.01)
-    criterion = nn.MSELoss()
-    total_loss_iterations = 0
-
-    training_pairs = [tensorsFromPair(source, target, random.choice(pairs))
-                      for i in range(num_iteration)]
-
-    for iter in range(1, num_iteration + 1):
-        training_pair = training_pairs[iter - 1]
-        input_tensor = training_pair[0]
-        target_tensor = training_pair[1]
-
-        loss = clacModel(model, input_tensor, target_tensor, optimizer, criterion)
-        print(loss)
-
-        total_loss_iterations += loss
-
-        if iter % 5000 == 0:
-            avarage_loss = total_loss_iterations / 5000
-            total_loss_iterations = 0
-            print('%d %.4f' % (iter, avarage_loss))
-
-    torch.save(model.state_dict(), 'mytraining.pt')
-    return model
-
-
-def evaluate(model, input_lang, output_lang, sentences, max_length=MAX_LENGTH):
-    with torch.no_grad():
-        input_tensor = tensorFromSentence(input_lang, sentences[0])
-        output_tensor = tensorFromSentence(output_lang, sentences[1])
-
-        decoded_words = []
-
-        output = model(input_tensor, output_tensor)
-        # print(output_tensor)
-
-        for ot in range(output.size(0)):
-            topv, topi = output[ot].topk(1)
-            # print(topi)
-
-            if topi[0].item() == EOS_token:
-                decoded_words.append('<EOS>')
-                break
-            else:
-                decoded_words.append(output_lang.index2word[topi[0].item()])
-    return decoded_words
-
-
-def evaluateRandomly(model, source, target, pairs, n=10):
-    for i in range(n):
-        pair = random.choice(pairs)
-        print('source{}'.format(pair[0]))
-        print('target{}'.format(pair[1]))
-        output_words = evaluate(model, source, target, pair)
-        output_sentence = ' '.join(output_words)
-        print('predicted{}'.format(output_sentence))
-
-
-lang1 = 'eng'
-lang2 = 'ind'
-# source, target, pairs = process_data(lang1, lang2)
-
-# randomize = random.choice(pairs)
-# print('random sentence {}'.format(randomize))
-
-###
-# Own part
-#
-#
-####
-# print(source.n_words)
-# print(target.n_words)
-
-
-# print model
-# print(encoder)
-# print(decoder)
-
-text2kp = TextKeypointsDataset(path_to_numpy_file="own_data_morse/all_files_normalized.npy",
-                               path_to_csv='own_data_morse/sentences.csv', transform=ToTensor())
-keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
-
-it = iter(keypoints_loader)
-# first = next(it)
-# in_ten = torch.as_tensor(first[0], dtype=torch.long).view(-1, 1)
-# out_ten = torch.as_tensor(first[1], dtype=torch.float).view(-1, 1)
-
-# print(in_ten)
-# print(out_ten[:20])
-
-# print("in %d, out %d" % (in_ten.size()[0], out_ten.size()[0]))
-
-# print number of words
-# input_size = first[0].size()[1]
-# output_size = first[1].size()[2]
-
-# input_size = in_ten.size()[0]
-# output_size = out_ten.size()[0]
-
-# print('Input : {} Output : {}'.format(input_size, output_size))
-
-embed_size = 16
-hidden_size = 512
-num_layers = 1
-num_iteration = 3
-
-# create encoder-decoder model
-encoder = Encoder(2, hidden_size, embed_size, num_layers)
-decoder = Decoder(6, hidden_size, embed_size, num_layers)
-
-model = Seq2Seq(encoder, decoder, device).to(device)
-
-# print("in.shape"+str(in_ten.shape))
-# print(in_ten)
-# print("out.shape"+str(out_ten.shape))
-# print(out_ten)
-
-
-
-# train
-def train_own(model, input_tensor, target_tensor, model_optimizer, criterion):
-    model_optimizer.zero_grad()
-    loss = 0.0
-    # output = model(in_ten, out_ten)
-    output = model(input_tensor, target_tensor)
-    num_iter = output.size(0)
-    # print(output.size(0))
-
-    # print(target_tensor.size())
-
-    # calculate the loss from a predicted sentence with the expected result
-    for ot in range(num_iter):
-        # print("output %s, target %s" % (str(output.size()), str(target_tensor.size())))
-        # print("output %s, target %s" % (str(output[ot].size()), str(target_tensor[ot].size())))
-        # print(output)
-        loss += criterion(output[ot], target_tensor[ot])
-    loss.backward()
-    model_optimizer.step()
-    epoch_loss = loss.item() / num_iter
-
-    # print(epoch_loss)
-    return epoch_loss
-
-
-model.train()
-model_optimizer = optim.SGD(model.parameters(), lr=0.01)
-criterion = nn.MSELoss()
-total_loss_iterations = 0
-
-for idx in range(1, num_iteration + 1):
-    nexty = next(it)
-    rnd = random.randint(20, 50)
-
-    in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
-    out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
-    print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
-
-    loss = train_own(model, in_ten, out_ten, model_optimizer, criterion)
-
-    total_loss_iterations += loss
-
-    if idx % 1 == 0:
-        avarage_loss = total_loss_iterations / 1
+    def train_helper(self, model):
+        model.train()
+        model_optimizer = optim.SGD(model.parameters(), lr=0.01)
+        criterion = nn.L1Loss()
         total_loss_iterations = 0
-        print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
 
-# model = trainModel(model, source, target, pairs, num_iteration)
-# evaluateRandomly(model, source, target, pairs)
+        for idx in range(1, num_iteration + 1):
+            nexty = next(it)
+            rnd = random.randint(20, 50)
 
-# evaluate (kommt nur scheisse raus)
-it = iter(keypoints_loader)
-nexty = next(it)
+            in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
+            out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
+            print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
 
-with torch.no_grad():
-    in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
-    out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
-    print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
-    print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
-    print("---"*9)
-    decoded_words = []
+            loss = run_model_own.train_own(model, in_ten, out_ten, model_optimizer, criterion)
 
-    output = model(in_ten, out_ten)
-    print("output.size: %d" % output.size(0))
-    print(output)
-    print("---" * 10)
-    for ot in range(output.size(0)):
-        topv, topi = output[ot].topk(1)
+            total_loss_iterations += loss
 
-        print(topv)
-        print(topi)
+            if idx % 1 == 0:
+                avarage_loss = total_loss_iterations / 1
+                total_loss_iterations = 0
+                print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
 
-        if topi[0].item() == EOS_token:
-            decoded_words.append('<EOS>')
-            break
-        else:
-            decoded_words.append(out_ten)
-        # print(decoded_words)
+    # train
+    def train_own(self, model, input_tensor, target_tensor, model_optimizer, criterion):
+        model_optimizer.zero_grad()
+        loss = 0.0
+        output = model(input_tensor, target_tensor)
+        num_iter = output.size(0)
 
+        # calculate the loss from a predicted sentence with the expected result
+        for ot in range(num_iter):
+            # print("output %s, target %s" % (str(output.size()), str(target_tensor.size())))
+            # print("output %s, target %s" % (str(output[ot].size()), str(target_tensor[ot].size())))
+            # print(output)
+            loss += criterion(output[ot], target_tensor[ot])
+        loss.backward()
+        model_optimizer.step()
+        epoch_loss = loss.item() / num_iter
+
+        # print(epoch_loss)
+        return epoch_loss
+
+    def evaluate_model_own(self):
+        # evaluate (kommt nur scheisse raus)
+        it = iter(keypoints_loader)
+        nexty = next(it)
+
+        with torch.no_grad():
+            in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
+            out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
+            print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
+            print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
+            print("---" * 9)
+            decoded_words = []
+
+            output = model(in_ten, out_ten)
+            print("output.size: %d" % output.size(0))
+            print(output)
+            print("---" * 10)
+            for ot in range(output.size(0)):
+                topv, topi = output[ot].topk(1)
+
+                print(topv)
+                print(topi)
+
+                if topi[0].item() == EOS_token:
+                    decoded_words.append('<EOS>')
+                    break
+                else:
+                    decoded_words.append(out_ten)
+                # print(decoded_words)
+
+
+if __name__ == '__main__':
+    teacher_forcing_ratio = 0.5
+    embed_size = 16
+    hidden_size = 512
+    num_layers = 1
+    num_iteration = 3
+    SOS_token = 0
+    EOS_token = 1
+
+    text2kp = TextKeypointsDataset(path_to_numpy_file="own_data_morse/all_files_normalized.npy",
+                                   path_to_csv='own_data_morse/sentences.csv', transform=ToTensor())
+    keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
+
+    it = iter(keypoints_loader)
+    run_model_own = RunModel()
+
+    model = run_model_own.init_model()
+    run_model_own.train_helper(model)
+
+    run_model_own.evaluate_model_own()
