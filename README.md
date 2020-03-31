@@ -15,5 +15,5 @@ Scripts for data preprocessing in master/ma/scripts
 - **rescaling**: TBD: rescaling all speakers to the same size (started 25.02.2020, not finished - standby)
 - **data_loader**: Dataloader/text_to_kp - loading data into a model
   - [text_to_kps_dataset.py](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/text_to_kps_dataset.py): Data loaders for text to keypoints using a npy (keypoints) and a csv file (holding text and the links from text to keypoints)
-  - (**text_to_kps_test.py**](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/text_to_kps_test.py): test text_to_kps_dataset.py print the obtained data
-  - [**gru99_model_own.py**](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/gru99_model_own.py): basic seq2seq model using text_to_kps_dataset.py
+  - [text_to_kps_test.py](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/text_to_kps_test.py): test text_to_kps_dataset.py print the obtained data
+  - [gru99_model_own.py](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/gru99_model_own.py): basic seq2seq model using text_to_kps_dataset.py
