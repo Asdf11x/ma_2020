@@ -11,6 +11,8 @@ Scripts for data preprocessing in master/ma/scripts
 - **normalization:** normalizes keypoint files (subtract mean and divide by stdev) 
   - centralize_normalize.py path_to_numpy_file path_to_target_dir 
   - path_to_target_dir is optional, if not specified use dir of numpy file
-- rescaling: TBD: rescaling all speakers to the same size (started 25.02.2020, not finished - standby)
-- data_loader: loading data into a model
-
+- **rescaling**: TBD: rescaling all speakers to the same size (started 25.02.2020, not finished - standby)
+- **data_loader**: Dataloader/text_to_kp - loading data into a model
+  - **text_to_kps_dataset.py**: Data loaders for text to keypoints using a npy (keypoints) and a csv file (holding text and the links from text to keypoints)
+  - **text_to_kps_test.py**: test text_to_kps_dataset.py print the obtained data
+  - **gru99_model_own.py**: basic seq2seq model using text_to_kps_dataset.py
