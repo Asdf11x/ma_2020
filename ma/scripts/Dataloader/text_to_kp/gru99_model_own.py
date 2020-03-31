@@ -49,7 +49,7 @@ class Encoder(nn.Module):
     def forward(self, src):
         embedded = self.embedding(src).view(1, 1, -1)
         outputs, hidden = self.gru(embedded)
-        return outputs, hidden
+        return outputs, hidden  # outputs = hidden
 
 
 class Decoder(nn.Module):
@@ -64,24 +64,24 @@ class Decoder(nn.Module):
 
         # initialize every layer with the appropriate dimension. For the decoder layer,
         # it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
-        self.embedding = nn.Embedding(output_dim, self.emb_dim)
-        print(self.embedding)
-        self.gru = nn.GRU(self.emb_dim, self.hidden_dim, num_layers=self.num_layers)
-        print(self.gru)
+        self.embedding = nn.Embedding(output_dim, self.emb_dim)  # 6, 16
+        self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)
         self.out = nn.Linear(self.hidden_dim, output_dim)
         self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, input, hidden):
         # reshape the input to (1, batch_size)
-        input = input.view(1, -1)
-        embedded = F.relu(self.embedding(input))
-        output, hidden = self.gru(embedded, hidden)
+        input = input.view(1, 1, -1)
+        # embedded = F.relu(self.embedding(input))  # cut out embedding layer in Decoder
+
+        output, hidden = self.gru(input, hidden)
         prediction = self.softmax(self.out(output[0]))
 
         return prediction, hidden
 
 
 class Seq2Seq(nn.Module):
+
     def __init__(self, encoder, decoder, device):
         super().__init__()
 
@@ -102,6 +102,8 @@ class Seq2Seq(nn.Module):
 
         # encode every word in a sentence
         for i in range(input_length):
+            # encoder_output = encoder_hidden = Encoder.forward.outputs/hidden
+            # .size() => (hidden_size = 512) => [1, 1, 512]
             encoder_output, encoder_hidden = self.encoder(source[i])
 
         # use the encoder’s hidden layer as the decoder hidden
@@ -111,8 +113,8 @@ class Seq2Seq(nn.Module):
         decoder_input = torch.tensor([SOS_token], device=device)  # SOS
 
         # topk is used to get the top K value over a list
-        # predict the output word from the current target word. If we enable the teaching force,  then the #next decoder input is the next word, else, use the decoder output highest value.
-
+        # predict the output word from the current target word. If we enable the teaching force,
+        # then the #next decoder input is the next word, else, use the decoder output highest value.
         for t in range(target_length):
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
             outputs[t] = decoder_output
@@ -127,10 +129,10 @@ class Seq2Seq(nn.Module):
 
 class RunModel:
 
-    def init_model(self):
+    def init_model(self, input_dim, output_dim):
         # create encoder-decoder model
-        encoder = Encoder(2, hidden_size, embed_size, num_layers)
-        decoder = Decoder(6, hidden_size, embed_size, num_layers)
+        encoder = Encoder(input_dim, hidden_size, embed_size, num_layers)
+        decoder = Decoder(output_dim, hidden_size, embed_size, num_layers)
         model = Seq2Seq(encoder, decoder, device).to(device)
         return model
 
@@ -145,7 +147,7 @@ class RunModel:
             rnd = random.randint(20, 50)
 
             in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
-            out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
+            out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # TODO: remove crop (20 for testing)
             print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
 
             loss = run_model_own.train_own(model, in_ten, out_ten, model_optimizer, criterion)
@@ -186,19 +188,19 @@ class RunModel:
             in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
             out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # crop to 20 for testing
             print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
-            print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
+            # print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
             print("---" * 9)
             decoded_words = []
 
             output = model(in_ten, out_ten)
             print("output.size: %d" % output.size(0))
-            print(output)
+            # print(output)
             print("---" * 10)
             for ot in range(output.size(0)):
                 topv, topi = output[ot].topk(1)
 
-                print(topv)
-                print(topi)
+                # print(topv)
+                # print(topi)
 
                 if topi[0].item() == EOS_token:
                     decoded_words.append('<EOS>')
@@ -214,17 +216,20 @@ if __name__ == '__main__':
     hidden_size = 512
     num_layers = 1
     num_iteration = 3
-    SOS_token = 0
-    EOS_token = 1
+    SOS_token = 0.0
+    EOS_token = 1.0
 
-    text2kp = TextKeypointsDataset(path_to_numpy_file="own_data_morse/all_files_normalized.npy",
-                                   path_to_csv='own_data_morse/sentences.csv', transform=ToTensor())
+    text2kp = TextKeypointsDataset(path_to_numpy_file="own_data/all_files_normalized.npy",
+                                   path_to_csv='own_data/sentences.csv', transform=ToTensor())
     keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
+
+    input_dim = 18  # length of source vocab dictionary (current trash data = 5) TODO: get automatically
+    output_dim = 20  # length of target vocab dictionary?? TODO: Maybe max length of keypoint files (trashdata: ~5500)
 
     it = iter(keypoints_loader)
     run_model_own = RunModel()
 
-    model = run_model_own.init_model()
+    model = run_model_own.init_model(input_dim, output_dim)
     run_model_own.train_helper(model)
 
     run_model_own.evaluate_model_own()

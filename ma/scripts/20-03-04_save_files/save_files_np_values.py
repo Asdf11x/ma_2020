@@ -77,6 +77,7 @@ class SaveFiles:
         process = psutil.Process(os.getpid())
         print("Current memory usage: %s MB" % str(process.memory_info().rss / 1000000))  # divided to get mb
 
+
 if __name__ == '__main__':
     # origin json files directory
     if len(sys.argv) > 1:

@@ -35,7 +35,7 @@ class PrintDataset():
                 # get size and content of keypoints (limit print to first 20 keypoints)
                 print("Keypoints:")
                 print(iterator_data[1].size())
-                print(iterator_data[1][0][0][:20])
+                print(iterator_data[1][:20])
                 print("--- " * 10 + "\n")
 
             except StopIteration:  # reinitialize data loader if epochs > amount of data

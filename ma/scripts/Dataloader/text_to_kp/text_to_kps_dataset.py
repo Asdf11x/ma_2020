@@ -58,12 +58,15 @@ class TextKeypointsDataset(data.Dataset):
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
         keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
         X.append(keys_x + keys_y)
+        X = X[0]  # remove one parenthesis
+        X.append(1.0)  # append EOS
 
         df_text = pd.read_csv(self.path_to_csv)
         saved_column = df_text['text']
 
         processed_data = self.preprocess_data(saved_column)  # preprocess
         processed_line = [int(i) for i in processed_data[index]]
+        processed_line.append(1)  # append EOS
 
         # Set padding length (uncomment following 3 lines for padding)
         # padding_length = 20
@@ -73,12 +76,13 @@ class TextKeypointsDataset(data.Dataset):
         if self.transform:
             X = self.transform(X)
             processed_line = self.transform(processed_line)
-
         return processed_line, X
 
     def preprocess_data(self, data):
         unique_words = self.word2dictionary(data)  # get array of unique words
-        int2word = dict(enumerate(unique_words))  # map array of unique words to numbers
+        int2word = {0: "SOS", 1: "EOS"}  # add Start/End of sentence
+        int2word.update(dict(enumerate(unique_words, start=2)))  # map array of unique words to numbers
+        # print(int2word)
         # e.g. print: 0 : 'who'
         word2int = {char: ind for ind, char in int2word.items()}  # map numbers to unique words
         # e.g. print: 'who': 0

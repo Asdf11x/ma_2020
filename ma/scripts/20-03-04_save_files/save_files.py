@@ -83,8 +83,9 @@ class SaveFiles:
             subdirectories_file.remove(subdir)
 
         self.print_memory_usage()
-
         np.savetxt((data_dir_target / self.remaining_folders_name), subdirectories_file, delimiter="\n", fmt="%s")
+
+        # update .npy file
         if os.path.isfile(dictionary_file_path):
             dictionary_from_file = np.load(dictionary_file_path).item()
             dictionary_from_file.update(all_files)
