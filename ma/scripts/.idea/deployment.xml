@@ -2,7 +2,7 @@
 <project version="4">
   <component name="PublishConfigData">
     <serverData>
-      <paths name="Copy of project-level server 'calcula'">
+      <paths name="calcula">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
