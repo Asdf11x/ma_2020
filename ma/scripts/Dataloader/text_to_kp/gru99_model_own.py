@@ -53,19 +53,18 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, output_dim, hidden_dim, embbed_dim, num_layers):
+    def __init__(self, output_dim, hidden_dim, num_layers):
         super(Decoder, self).__init__()
 
         # set the encoder output dimension, embed dimension, hidden dimension, and number of layers
-        self.emb_dim = embbed_dim
+        # self.emb_dim = embbed_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.num_layers = num_layers
 
         # initialize every layer with the appropriate dimension. For the decoder layer,
         # it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
-        self.embedding = nn.Embedding(output_dim, self.emb_dim)  # 6, 16
-        self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)
+        self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)  # input_dim = 1, any problems with that?
         self.out = nn.Linear(self.hidden_dim, output_dim)
         self.softmax = nn.LogSoftmax(dim=1)
 
@@ -129,28 +128,33 @@ class Seq2Seq(nn.Module):
 
 class RunModel:
 
-    def init_model(self, input_dim, output_dim):
+    def init_model(self, input_dim, output_dim, hidden_size, embed_size, num_layers):
         # create encoder-decoder model
         encoder = Encoder(input_dim, hidden_size, embed_size, num_layers)
-        decoder = Decoder(output_dim, hidden_size, embed_size, num_layers)
+        decoder = Decoder(output_dim, hidden_size, num_layers)
         model = Seq2Seq(encoder, decoder, device).to(device)
         return model
 
-    def train_helper(self, model):
+    def train_helper(self, model, keypoints_loader, num_iteration):
         model.train()
         model_optimizer = optim.SGD(model.parameters(), lr=0.01)
         criterion = nn.L1Loss()
         total_loss_iterations = 0
+        it = iter(keypoints_loader)
 
         for idx in range(1, num_iteration + 1):
-            nexty = next(it)
+            try:
+                iterator_data = next(it)
+            except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+                it = iter(keypoints_loader)
+
             rnd = random.randint(20, 50)
 
-            in_ten = torch.as_tensor(nexty[0], dtype=torch.long).view(-1, 1)
-            out_ten = torch.as_tensor(nexty[1], dtype=torch.float).view(-1, 1)[:20]  # TODO: remove crop (20 for testing)
-            print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
+            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.long).view(-1, 1)
+            target_ten = torch.as_tensor(iterator_data[1], dtype=torch.float).view(-1, 1)[:20]  # TODO: remove crop (20 for testing)
+            print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
 
-            loss = run_model_own.train_own(model, in_ten, out_ten, model_optimizer, criterion)
+            loss = run_model_own.train_own(model, source_ten, target_ten, model_optimizer, criterion)
 
             total_loss_iterations += loss
 
@@ -160,10 +164,10 @@ class RunModel:
                 print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
 
     # train
-    def train_own(self, model, input_tensor, target_tensor, model_optimizer, criterion):
+    def train_own(self, model, source_tensor, target_tensor, model_optimizer, criterion):
         model_optimizer.zero_grad()
         loss = 0.0
-        output = model(input_tensor, target_tensor)
+        output = model(source_tensor, target_tensor)
         num_iter = output.size(0)
 
         # calculate the loss from a predicted sentence with the expected result
@@ -201,8 +205,9 @@ class RunModel:
 
                 # print(topv)
                 # print(topi)
-
+                print(topi[0].item())
                 if topi[0].item() == EOS_token:
+                    print("HALT STOP JETZT REDE ICH")
                     decoded_words.append('<EOS>')
                     break
                 else:
@@ -215,7 +220,7 @@ if __name__ == '__main__':
     embed_size = 16
     hidden_size = 512
     num_layers = 1
-    num_iteration = 3
+    num_iteration = 5
     SOS_token = 0.0
     EOS_token = 1.0
 
@@ -223,13 +228,13 @@ if __name__ == '__main__':
                                    path_to_csv='own_data/sentences.csv', transform=ToTensor())
     keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
 
-    input_dim = 18  # length of source vocab dictionary (current trash data = 5) TODO: get automatically
-    output_dim = 20  # length of target vocab dictionary?? TODO: Maybe max length of keypoint files (trashdata: ~5500)
+    source_dim = 18  # length of source vocab dictionary (current trash data = 5) TODO: get automatically
+    target_dim = 20  # length of target vocab dictionary?? TODO: Maybe max length of keypoint files (trashdata: ~5500)
 
-    it = iter(keypoints_loader)
+    # it = iter(keypoints_loader)
     run_model_own = RunModel()
 
-    model = run_model_own.init_model(input_dim, output_dim)
-    run_model_own.train_helper(model)
+    model = run_model_own.init_model(source_dim, target_dim, hidden_size, embed_size, num_layers)
+    run_model_own.train_helper(model, keypoints_loader, num_iteration)
 
-    run_model_own.evaluate_model_own()
+    # run_model_own.evaluate_model_own()
