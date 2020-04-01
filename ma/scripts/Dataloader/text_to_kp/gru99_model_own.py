@@ -5,27 +5,15 @@ https://www.guru99.com/seq2seq-model.html
 """
 
 from __future__ import unicode_literals, division
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-
-import numpy as np
-import pandas as pd
-import random
-
-import os
-import re
-import random
-
-from torch.autograd import Variable
+import torch.utils
+import torch.utils.data
 
 from Dataloader.text_to_kp.text_to_kps_dataset import TextKeypointsDataset
 from Dataloader.text_to_kp.text_to_kps_dataset import ToTensor
-import matplotlib.pyplot as plt
-import torch
-import torch.utils
-import torch.utils.data
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -66,7 +54,7 @@ class Decoder(nn.Module):
         # it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
         self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)  # input_dim = 1, any problems with that?
         self.out = nn.Linear(self.hidden_dim, output_dim)
-        self.softmax = nn.LogSoftmax(dim=1)
+        self.softmax = nn.LogSoftmax(dim=1)  # LogSoftmax, check for feasibility
 
     def forward(self, input, hidden):
         # reshape the input to (1, batch_size)
@@ -220,7 +208,7 @@ if __name__ == '__main__':
     embed_size = 16
     hidden_size = 512
     num_layers = 1
-    num_iteration = 5
+    num_iteration = 10
     SOS_token = 0.0
     EOS_token = 1.0
 
