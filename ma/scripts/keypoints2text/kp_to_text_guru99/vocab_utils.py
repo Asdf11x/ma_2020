@@ -25,6 +25,8 @@ from spacy.util import compile_prefix_regex, compile_infix_regex, compile_suffix
 
 # path_to_numpy_files = Path(sys.argv[1])
 path_hard_coded = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\how2sign.val.id.en"
+
+
 # path_hard_coded = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\aaa.txt"
 
 def custom_tokenizer(nlp):
@@ -33,18 +35,21 @@ def custom_tokenizer(nlp):
     suffix_re = compile_suffix_regex(nlp.Defaults.suffixes)
 
     return Tokenizer(nlp.vocab, prefix_search=prefix_re.search,
-                                suffix_search=suffix_re.search,
-                                infix_finditer=infix_re.finditer,
-                                token_match=None)
+                     suffix_search=suffix_re.search,
+                     infix_finditer=infix_re.finditer,
+                     token_match=None)
+
 
 nlp = spacy.load("en_core_web_sm")
 nlp.tokenizer = custom_tokenizer(nlp)
+
 
 def test_spacy():
     # nlp = en_core_web_sm.load()
     doc = nlp("Apple is looking at buying U.K. startup for $1 billion")
     for token in doc:
         print(token.text)
+
 
 # test_spacy()
 
@@ -260,11 +265,12 @@ class VocabUtils:
                 doc = nlp(line)
                 words = [token.text for token in doc]
                 for token in words[1:]:
-                    if token in contractions:
-                        for element in contractions[token].split():
-                            unique_words.add(element.lower())
-                    if token.isalpha():
-                        unique_words.add(token.lower())
+                    unique_words.add(token.lower())
+                    # if token in contractions:
+                    #     for element in contractions[token].split():
+                    #         unique_words.add(element.lower())
+                    # if token.isalpha():
+                    #     unique_words.add(token.lower())
 
             print(sorted(unique_words))
 
@@ -281,14 +287,12 @@ class VocabUtils:
             # unique_words = unique_copy.copy()
             # for word in unique_words:
 
-
             unique_words = unique_copy.copy()
             sorted_words = sorted(unique_words)
 
             sorted_words.insert(0, "UNK")
             sorted_words.insert(1, "SOS")
             sorted_words.insert(2, "EOS")
-
 
             print(len(sorted_words))
             print(sorted_words)
@@ -305,8 +309,8 @@ class VocabUtils:
                 # unique_words.add(nlp(line))
 
                 for element in line.split()[1:]:
-                # for element in line.split():
-                #     print(element)
+                    # for element in line.split():
+                    #     print(element)
                     unique_words.add(element.lower())
                 # print(set(line.split()))
 
@@ -327,7 +331,8 @@ class VocabUtils:
         """
         # if no target dir is set, move one folder up and create folder with "_vocab attached"
         if self.path_to_target_dir == "":
-            data_dir_target = self.path_to_sentences.parent.parent / (str(self.path_to_sentences.parent.name) + str("_vocab"))
+            data_dir_target = self.path_to_sentences.parent.parent / (
+                        str(self.path_to_sentences.parent.name) + str("_vocab"))
         else:
             data_dir_target = Path(self.path_to_target_dir)
 
