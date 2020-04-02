@@ -1,57 +1,27 @@
 """
-vocab_utils.py: script for processing data before runtime
+vocab_utils.py: create a vocab list for a text file
 
 features:
-    - read text from sentences.csv
+    - read text from file
+        - each line contains: ID Sentence
+        - ID is first element in each sentence, followed by a whitespace and then the actual sentence starts
     - build vocab file, containg all vocabs used in the sentences.csv file
-
+    - Vocab list DOES contain: 3 special tokens in the beginning & only words
+        - words like won't / don't / he's will be split up into: will not / do not / he is and added seperately to the
+        vocab list
+    - Vocab list does NOT contain: special characters & numbers
 """
 
-import torch
-from torch.utils import data
-import pandas as pd
-import numpy as np
-import numbers
+import os
+import re
+import sys
 import time
 from pathlib import Path
-import os
-import sys
-import spacy
-from spacy.attrs import ORTH, LEMMA, NORM, TAG
-import re
+
 import spacy
 from spacy.tokenizer import Tokenizer
-from spacy.util import compile_prefix_regex, compile_infix_regex, compile_suffix_regex
+from spacy.util import compile_prefix_regex, compile_suffix_regex
 
-# path_to_numpy_files = Path(sys.argv[1])
-path_hard_coded = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\how2sign.val.id.en"
-
-
-# path_hard_coded = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\aaa.txt"
-
-def custom_tokenizer(nlp):
-    infix_re = re.compile(r'''[.\,\?\:\;\...\‘\’\`\“\”\"~]''')
-    prefix_re = compile_prefix_regex(nlp.Defaults.prefixes)
-    suffix_re = compile_suffix_regex(nlp.Defaults.suffixes)
-
-    return Tokenizer(nlp.vocab, prefix_search=prefix_re.search,
-                     suffix_search=suffix_re.search,
-                     infix_finditer=infix_re.finditer,
-                     token_match=None)
-
-
-nlp = spacy.load("en_core_web_sm")
-nlp.tokenizer = custom_tokenizer(nlp)
-
-
-def test_spacy():
-    # nlp = en_core_web_sm.load()
-    doc = nlp("Apple is looking at buying U.K. startup for $1 billion")
-    for token in doc:
-        print(token.text)
-
-
-# test_spacy()
 
 class VocabUtils:
 
@@ -59,11 +29,9 @@ class VocabUtils:
         self.path_to_sentences = Path(path_to_sentences)
         self.path_to_target_dir = path_to_target_dir
         self.path_to_target_file = ""
-        self.create_folders()
-        self.getData_spacy()
-
-    def getData_spacy(self):
-        contractions = {
+        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp.tokenizer = self.custom_tokenizer(self.nlp)
+        self.contractions = {
             "ain't": "are not",
             "aren't": "are not",
             "can't": "can not",
@@ -189,137 +157,66 @@ class VocabUtils:
             "n't": "not"
         }
 
-        TOKENIZER_EXCEPTIONS = {
-            # do
-            "don't": [
-                {ORTH: "do", LEMMA: "do"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            "doesn't": [
-                {ORTH: "does", LEMMA: "do"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            "didn't": [
-                {ORTH: "did", LEMMA: "do"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            # can
-            "can't": [
-                {ORTH: "ca", LEMMA: "can"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            "couldn't": [
-                {ORTH: "could", LEMMA: "can"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            # have
-            "I've'": [
-                {ORTH: "I", LEMMA: "I"},
-                {ORTH: "'ve'", LEMMA: "have", NORM: "have", TAG: "VERB"}],
-            "haven't": [
-                {ORTH: "have", LEMMA: "have"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            "hasn't": [
-                {ORTH: "has", LEMMA: "have"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            "hadn't": [
-                {ORTH: "had", LEMMA: "have"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            # will/shall will be replaced by will
-            "I'll'": [
-                {ORTH: "I", LEMMA: "I"},
-                {ORTH: "'ll'", LEMMA: "will", NORM: "will", TAG: "VERB"}],
-            "he'll'": [
-                {ORTH: "he", LEMMA: "he"},
-                {ORTH: "'ll'", LEMMA: "will", NORM: "will", TAG: "VERB"}],
-            "she'll'": [
-                {ORTH: "she", LEMMA: "she"},
-                {ORTH: "'ll'", LEMMA: "will", NORM: "will", TAG: "VERB"}],
-            "it'll'": [
-                {ORTH: "it", LEMMA: "it"},
-                {ORTH: "'ll'", LEMMA: "will", NORM: "will", TAG: "VERB"}],
-            "won't": [
-                {ORTH: "wo", LEMMA: "will"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            "wouldn't": [
-                {ORTH: "would", LEMMA: "will"},
-                {ORTH: "n't", LEMMA: "not", NORM: "not", TAG: "RB"}],
-            # be
-            "I'm'": [
-                {ORTH: "I", LEMMA: "I"},
-                {ORTH: "'m'", LEMMA: "be", NORM: "am", TAG: "VERB"}]
-        }
+    def main(self):
+        self.create_folders()
+        self.getData_spacy()
 
-        # doc1 = nlp(u"Oh no he didn't. I can't and I won't. I'll know what I'm gonna do.")
-        # for token in doc1:
-        #     print(token.text, token.lemma_)
+    def custom_tokenizer(self, nlp):
+        """
+        Custom tokenizer:
+            - won't -> won't
+        before:
+            - won't -> wo + n't
 
-        corrections = {
-            "'ll": "will",
-            "'m": "am",
-            "'re": "are",
-            "'s": "is",
-            "'ve": "have",
-            "n't": "not"
-        }
+        Afterwards all words like won't are compared to a dictionary containing all possibilities.
+        the option before (won't -> wo + n't) cannot detect if "wo" was an actual word or a part from won't.
+        :param nlp:
+        :return:
+        """
+        infix_re = re.compile(r'''[.\,\?\:\;\...\‘\’\`\“\”\"~]''')
+        prefix_re = compile_prefix_regex(nlp.Defaults.prefixes)
+        suffix_re = compile_suffix_regex(nlp.Defaults.suffixes)
+
+        return Tokenizer(nlp.vocab, prefix_search=prefix_re.search,
+                         suffix_search=suffix_re.search,
+                         infix_finditer=infix_re.finditer,
+                         token_match=None)
+
+    def getData_spacy(self):
         unique_words = set()
 
         with open(self.path_to_sentences, encoding='utf-8') as f:
             for line in f:
                 # tokenize
-                doc = nlp(line)
-                words = [token.text for token in doc]
-                for token in words[1:]:
+                doc = self.nlp(line)
+                sentence_tok = [token.text for token in doc]
+                for token in sentence_tok[1:]:
                     unique_words.add(token.lower())
-                    # if token in contractions:
-                    #     for element in contractions[token].split():
-                    #         unique_words.add(element.lower())
-                    # if token.isalpha():
-                    #     unique_words.add(token.lower())
-
-            print(sorted(unique_words))
 
             # clean tokenize
             unique_copy = unique_words.copy()
             for word in unique_words:
-                if word in contractions:
+                # check if word is contracted (e.g. won't, don't, ...)
+                if word in self.contractions:
                     unique_copy.remove(word)
-                    for element in contractions[word].split():
+                    # if is contracted, expand (e.g. won't -> will not) and add both words to the set
+                    for element in self.contractions[word].split():
                         unique_copy.add(element.lower())
                     continue
+                # check if word does contain only alphanummeric
                 if not word.isalpha():
                     unique_copy.remove(word)
-            # unique_words = unique_copy.copy()
-            # for word in unique_words:
 
             unique_words = unique_copy.copy()
             sorted_words = sorted(unique_words)
 
-            sorted_words.insert(0, "UNK")
-            sorted_words.insert(1, "SOS")
-            sorted_words.insert(2, "EOS")
+            # add special tokens to the beginning
+            sorted_words.insert(0, "<unk>")
+            sorted_words.insert(1, "<sos>")
+            sorted_words.insert(2, "<eos>")
+            sorted_words.insert(3, ".")
 
-            print(len(sorted_words))
-            print(sorted_words)
-
-        with open(self.path_to_target_file, 'w') as f:
-            for item in sorted_words:
-                f.write("%s\n" % item)
-
-    def getData(self):
-        with open(path_hard_coded) as f:
-            # data = open(path_hard_coded)
-            unique_words = set()
-            for line in f:
-                # unique_words.add(nlp(line))
-
-                for element in line.split()[1:]:
-                    # for element in line.split():
-                    #     print(element)
-                    unique_words.add(element.lower())
-                # print(set(line.split()))
-
-                # print(line.split())
-                # print(line)
-                # text = set(word.split() for word in line)
-            # df_text = pd.read_csv(path_hard_coded, header=None, sep=" ")
-            sorted_words = sorted(unique_words)
-            print(sorted_words)
+            print("Unique words (incl. UNK/EOS/SOS ): %d" % len(sorted_words))
 
         with open(self.path_to_target_file, 'w') as f:
             for item in sorted_words:
@@ -332,7 +229,7 @@ class VocabUtils:
         # if no target dir is set, move one folder up and create folder with "_vocab attached"
         if self.path_to_target_dir == "":
             data_dir_target = self.path_to_sentences.parent.parent / (
-                        str(self.path_to_sentences.parent.name) + str("_vocab"))
+                    str(self.path_to_sentences.parent.name) + str("_vocab"))
         else:
             data_dir_target = Path(self.path_to_target_dir)
 
@@ -358,5 +255,5 @@ if __name__ == '__main__':
         path_to_target_dir = sys.argv[2]
     start_time = time.time()
     vocab = VocabUtils(path_to_sentences, path_to_target_dir)
+    vocab.main()
     print("--- %.4s seconds ---" % (time.time() - start_time))
-    # vocab.getData()
