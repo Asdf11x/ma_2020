@@ -1,6 +1,12 @@
 """
 vocab_utils.py: create a vocab list for a text file
 
+usage:
+vocab_utils.py path_to_text_file transform_file path_to_target_dir
+example
+vocab_utils.py ~/workspace/how2sign.train.id.en 0 .
+
+
 features:
     - read text from file
         - each line contains: ID Sentence
@@ -10,6 +16,9 @@ features:
         - words like won't / don't / he's will be split up into: will not / do not / he is and added seperately to the
         vocab list
     - Vocab list does NOT contain: special characters & numbers
+    - standard feature: create vocab list
+    - premium feature: transform text file to lowecase / no non-character words / dont't -> do not
+        - set transform_file=1 in start parameters
 """
 
 import os
@@ -25,10 +34,12 @@ from spacy.util import compile_prefix_regex, compile_suffix_regex
 
 class VocabUtils:
 
-    def __init__(self, path_to_sentences, path_to_target_dir):
+    def __init__(self, path_to_sentences, path_to_target_dir, transform_file):
         self.path_to_sentences = Path(path_to_sentences)
         self.path_to_target_dir = path_to_target_dir
-        self.path_to_target_file = ""
+        self.path_to_vocab_file = ""
+        self.path_to_trans_file = ""
+        self.transform_file = transform_file
         self.nlp = spacy.load("en_core_web_sm")
         self.nlp.tokenizer = self.custom_tokenizer(self.nlp)
         self.contractions = {
@@ -159,7 +170,10 @@ class VocabUtils:
 
     def main(self):
         self.create_folders()
-        self.getData_spacy()
+        self.create_vocab_file()
+
+        if self.transform_file:
+            self.transform_sentence_file()
 
     def custom_tokenizer(self, nlp):
         """
@@ -182,7 +196,44 @@ class VocabUtils:
                          infix_finditer=infix_re.finditer,
                          token_match=None)
 
-    def getData_spacy(self):
+    def transform_sentence_file(self):
+        """
+        create vocab list from a file
+            - excluding first element, since its the video ID
+        :return:
+        """
+        all_sentences = []
+
+        with open(self.path_to_sentences, encoding='utf-8') as f:
+            for line in f:
+                # tokenize
+                doc = self.nlp(line)
+                sentence_tok = [token.text.lower() for token in doc]
+                sentence_trans = [str(doc[0])]
+                # clean tokenize
+                for word in sentence_tok[1:]:
+                    # check if word is contracted (e.g. won't, don't, ...)
+                    if word in self.contractions:
+                        # if is contracted, expand (e.g. won't -> will not) and add both words to the set
+                        for element in self.contractions[word].split():
+                            sentence_trans.append(element.lower())
+                        continue
+                    # check if word does contain only alphanummeric
+                    if word.isalpha():
+                        sentence_trans.append(word)
+
+                all_sentences.append(sentence_trans)
+
+        with open(self.path_to_trans_file, 'w') as f:
+            f.write('\n'.join([' '.join(i) for i in all_sentences]))
+        print("Transformed file.")
+
+    def create_vocab_file(self):
+        """
+        create vocab list from a file
+            - excluding first element, since its the video ID
+        :return:
+        """
         unique_words = set()
 
         with open(self.path_to_sentences, encoding='utf-8') as f:
@@ -190,6 +241,8 @@ class VocabUtils:
                 # tokenize
                 doc = self.nlp(line)
                 sentence_tok = [token.text for token in doc]
+                print(line)
+                print(sentence_tok)
                 for token in sentence_tok[1:]:
                     unique_words.add(token.lower())
 
@@ -218,9 +271,10 @@ class VocabUtils:
 
             print("Unique words (incl. UNK/EOS/SOS ): %d" % len(sorted_words))
 
-        with open(self.path_to_target_file, 'w') as f:
+        with open(self.path_to_vocab_file, 'w') as f:
             for item in sorted_words:
                 f.write("%s\n" % item)
+        print("Created vocab file.")
 
     def create_folders(self):
         """
@@ -238,7 +292,10 @@ class VocabUtils:
             os.makedirs(data_dir_target)
 
         # vocab file is in target dir "_vocab.txt" attached to the original name
-        self.path_to_target_file = data_dir_target / (str(self.path_to_sentences.stem) + str("_vocab.txt"))
+        self.path_to_vocab_file = data_dir_target / (str(self.path_to_sentences.stem) + str("_vocab.txt"))
+
+        # transformed file is in target dir "_transformed.txt" attached to the original name
+        self.path_to_trans_file = data_dir_target / (str(self.path_to_sentences.stem) + str("_transformed.txt"))
 
 
 if __name__ == '__main__':
@@ -249,11 +306,19 @@ if __name__ == '__main__':
         print("Set path to file containing sentences")
         sys.exit()
 
+    # transform file?
+    # 0:no, 1:yes
+    transform_file = 0
+    if len(sys.argv) > 2:
+        transform_file = sys.argv[2]
+
     # target directory
     path_to_target_dir = ""
-    if len(sys.argv) > 2:
-        path_to_target_dir = sys.argv[2]
+    if len(sys.argv) > 3:
+        path_to_target_dir = sys.argv[3]
+
+
     start_time = time.time()
-    vocab = VocabUtils(path_to_sentences, path_to_target_dir)
+    vocab = VocabUtils(path_to_sentences, path_to_target_dir, transform_file)
     vocab.main()
     print("--- %.4s seconds ---" % (time.time() - start_time))
