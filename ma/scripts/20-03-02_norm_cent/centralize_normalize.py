@@ -8,13 +8,18 @@ Version description:
 """
 
 import json
+import random
+
 import numpy as np
 import os
 import statistics
 from pathlib import Path
 import sys
 import time
-
+import warnings
+import os
+import psutil
+import copy
 
 class Normalize:
 
@@ -29,8 +34,10 @@ class Normalize:
         np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
 
     def main(self):
+
         # create target directory
         self.create_folders()
+        self.print_memory_usage()
 
         # centralize values
         all_files_dictionary_centralized = None
@@ -39,8 +46,9 @@ class Normalize:
 
         # normalize values
         # Either by '_transposed', '_np' or '_column'
-        all_mean_stdev = self.compute_mean_stdev_column(all_files_dictionary_centralized)
+        all_mean_stdev = self.compute_mean_stdev_transposed(all_files_dictionary_centralized)
         self.normalize(all_mean_stdev, all_files_dictionary_centralized)
+        self.print_memory_usage()
 
     def create_folders(self):
         if self.path_to_target_dir == "":
@@ -177,7 +185,7 @@ class Normalize:
         """
 
         all_files = self.dictionary_check(all_files_dictionary_centralized)
-
+        self.print_memory_usage()
         # use keys of openpose here
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
@@ -194,12 +202,16 @@ class Normalize:
                 for k in self.keys:
                     all_files_xy['all'][k]['x'].append(temp_df['people'][0][k][0::3])
                     all_files_xy['all'][k]['y'].append(temp_df['people'][0][k][1::3])
-        print("Files read, computing mean and stdev")
 
+        # print(all_files_xy['all'])
+
+        print("Files read, computing mean and stdev")
         for k in self.keys:
             mean_stdev_x = []
             mean_stdev_y = []
+
             for list in np.array(all_files_xy['all'][k]['x']).T.tolist():
+                # print(*list)
                 if "Null" in list:
                     list = [i for i in list if i != "Null"]
                     if list == []:
@@ -210,6 +222,7 @@ class Normalize:
                 else:
                     list = [float(item) for item in list]
                     mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
+                    # print(mean_stdev_x)
 
             for list in np.array(all_files_xy['all'][k]['y']).T.tolist():
                 if "Null" in list:
@@ -224,6 +237,8 @@ class Normalize:
                     mean_stdev_y.append([np.mean(list), statistics.pstdev(list)])
 
             all_mean_stdev[k] = [np.array(mean_stdev_x).T.tolist(), np.array(mean_stdev_y).T.tolist()]
+
+        # print(all_mean_stdev)
 
         # write the computed means and std_dev into json file
         f = open(self.path_to_target_dir / "all_mean_stdev.json", "w")
@@ -240,7 +255,7 @@ class Normalize:
         """
 
         all_files = self.dictionary_check(all_files_dictionary_centralized)
-
+        self.print_memory_usage()
         # use keys of openpose here
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
@@ -252,10 +267,8 @@ class Normalize:
                 temp_df = all_files[subdir][file]
                 if once == 1:
                     for k in self.keys:
-                        all_files_xy['all'][k] = {'x': np.empty((len(temp_df['people'][0][k][0::3]), 0), float),
-                                                  'y': np.empty((len(temp_df['people'][0][k][1::3]), 0), float)}
-                        # all_files_xy['all'][k] = {'x': [[] for x in range(len(temp_df['people'][0][k][0::3]))],
-                        #                           'y': [[] for x in range(len(temp_df['people'][0][k][1::3]))]}
+                        all_files_xy['all'][k] = {'x': np.empty((len(temp_df['people'][0][k][0::3]), 0), dtype=np.float),
+                                                  'y': np.empty((len(temp_df['people'][0][k][1::3]), 0), dtype=np.float)}
 
                     once = 0
 
@@ -264,24 +277,13 @@ class Normalize:
                         all_files_xy['all'][k]['x'], np.array(temp_df['people'][0][k][0::3])]
                     all_files_xy['all'][k]['y'] = np.c_[
                         all_files_xy['all'][k]['y'], np.array(temp_df['people'][0][k][1::3])]
-                    # for i in range(len(temp_df['people'][0][k][0::3])):
-                    #     all_files_xy['all'][k]['x'][i].append(temp_df['people'][0][k][0::3][i])
-                    #     all_files_xy['all'][k]['y'][i].append(temp_df['people'][0][k][1::3][i])
-
-                # for k in keys:
-                #     all_files_xy['all'][k]['x'] = all_files_xy['all'][k]['x'].tolist()
-
-        # print(all_files_xy)
-        # f = open(data_dir_target / "dir_mean_stdev.json", "w")
-        # f.write(json.dumps(all_files_xy))
-        # # json.dump(b, codecs.open(file_path, 'w', encoding='utf-8'), separators=(',', ':'), sort_keys=True, indent=4)
-        # f.close()
         print("Files read, computing mean and stdev")
 
         for k in self.keys:
             mean_stdev_x = []
             mean_stdev_y = []
             for list in np.array(all_files_xy['all'][k]['x']):
+                warnings.simplefilter(action='ignore', category=FutureWarning)
                 if "Null" in list:
                     mean_stdev_x.append(["Null", "Null"])
                 else:
@@ -311,11 +313,14 @@ class Normalize:
         :return:
         """
         all_files = self.dictionary_check(all_files_dictionary_centralized)
+        self.print_memory_usage()
 
         # use keys of openpose here
         all_mean_stdev = {}  # holds means and stdev of each directory, one json file per directory
         once = 1
         all_files_xy = {'all': {}}
+        self.print_memory_usage()
+        print("load data into dictionary")
 
         for subdir in all_files.keys():
             # load files from one folder into dictionary
@@ -333,20 +338,24 @@ class Normalize:
                         all_files_xy['all'][k]['x'][i].append(temp_df['people'][0][k][0::3][i])
                         all_files_xy['all'][k]['y'][i].append(temp_df['people'][0][k][1::3][i])
 
+        self.print_memory_usage()
         print("Files read, computing mean and stdev")
 
         for k in self.keys:
             mean_stdev_x = []
             mean_stdev_y = []
+            self.print_memory_usage()
             for list in np.array(all_files_xy['all'][k]['x']):
-                if "Null" in list:
+
+                warnings.simplefilter(action='ignore', category=FutureWarning)
+                if 'Null' in list:
                     mean_stdev_x.append(["Null", "Null"])
                 else:
                     list = [float(item) for item in list]
                     mean_stdev_x.append([np.mean(list), statistics.pstdev(list)])
 
             for list in np.array(all_files_xy['all'][k]['y']):
-                if "Null" in list:
+                if 'Null' in list:
                     mean_stdev_y.append(["Null", "Null"])
                 else:
                     list = [float(item) for item in list]
@@ -364,17 +373,14 @@ class Normalize:
     def normalize(self, all_mean_stdev, all_files_dictionary_centralized=None):
 
         all_files = self.dictionary_check(all_files_dictionary_centralized)
+        self.print_memory_usage()
 
         all_files_save = {}
         # use mean and stdev to compute values for the json files
         for subdir in all_files.keys():
-            # json_files = [pos_json for pos_json in os.listdir(data_dir_origin / subdir)
-            #               if pos_json.endswith('.json')]
             all_files_save[subdir] = {}
             for file in all_files[subdir]:
-                # jsonFile = open(data_dir_origin / subdir / file, "r")  # Open the JSON file for reading
-                data = all_files[subdir][file]  # Read the JSON into the buffer
-                # jsonFile.close()  # Close the JSON file
+                data = all_files[subdir][file]
 
                 # x -> [0::3]
                 # y -> [1:.3]
@@ -422,18 +428,19 @@ class Normalize:
                     data['people'][0][k] = values
 
                 all_files_save[subdir][file] = data
-
+        self.print_memory_usage()
+        # print(all_files_save)
         dictionary_file_path = self.path_to_target_dir / 'all_files_normalized.npy'
         last_folder = os.path.basename(os.path.normpath(dictionary_file_path.parent)) + "/" + str(
             dictionary_file_path.name)
         print("Saving normalized results to %s " % last_folder)
         np.save(dictionary_file_path, all_files_save)
+        self.print_memory_usage()
 
     def dictionary_check(self, all_files_dictionary_centralized):
+        # load from .npy file
         if all_files_dictionary_centralized is None:
-            # load from .npy file
-            print("To normalize loading from %s file" % self.path_to_numpy_file)
-
+            print("Loading from %s file" % self.path_to_numpy_file)
             all_files = np.load(self.path_to_numpy_file).item()
         else:
             print("Using internal centralized dictionary")
@@ -467,6 +474,10 @@ class Normalize:
         np.save(dictionary_file_path, all_files)
         return Path(dictionary_file_path)
 
+    def print_memory_usage(self):
+        process = psutil.Process(os.getpid())
+        print("Current memory usage: %s MB" % str(process.memory_info().rss / 1000000))  # divided to get mb
+
 
 if __name__ == '__main__':
     # path to numpy file, necessary to run the script
@@ -483,7 +494,7 @@ if __name__ == '__main__':
     else:
         print("Target directory not set, using default")
 
-    path_to_json_dir=""
+    path_to_json_dir = ""
     # origin json files directory
     if len(sys.argv) > 3:
         path_to_json_dir = sys.argv[3]

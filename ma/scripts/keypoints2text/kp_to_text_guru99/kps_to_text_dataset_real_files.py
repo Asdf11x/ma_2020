@@ -14,6 +14,8 @@ import pandas as pd
 import numpy as np
 import numbers
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+import csv
+
 
 class TextKeypointsDataset(data.Dataset):
     'Characterizes a dataset for PyTorch'
@@ -25,9 +27,39 @@ class TextKeypointsDataset(data.Dataset):
         self.path_to_vocab_file = path_to_vocab_file
         self.transform = transform
         self.int2word = {}
-        self.get_vocab_file()
         old = np.load
         np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
+        self.df_kp_text_train = pd.DataFrame()
+        self.keypoints2sentence()
+        self.get_vocab_file()
+
+    def keypoints2sentence(self):
+        # load from .npy file
+        kp_files = np.load(self.path_to_numpy_file).item()
+        df_kp = pd.DataFrame(kp_files.keys(), columns=["keypoints"])
+        kp2sentence = []
+        # print(df_kp)
+
+        d = {'keypoints': [], 'text': []}
+        with open(self.path_to_csv) as f:
+            for line in f:
+                d['keypoints'].append(line.split(" ")[0])
+                d['text'].append(" ".join(line.split()[1:]))
+        df_text = pd.DataFrame(d)
+
+        speaker = []
+        text_en = []
+        for kp in df_kp["keypoints"]:
+            vid_speaker = kp[:11] + kp[11:].split('-')[0]
+            speaker.append(vid_speaker)
+
+            for idx in range(len(df_text['keypoints'])):
+                if vid_speaker in df_text['keypoints'][idx]:
+                    kp2sentence.append([kp, df_text['text'][idx]])
+                    break
+        self.df_kp_text_train = pd.DataFrame(kp2sentence, columns=["keypoints", "text"])
+        # dffucc.to_csv(r'kp2sentence.txt', index=False)
+        # print(self.df_kp_text_train)
 
     def __len__(self):
         """Denotes the total number of samples"""
@@ -43,7 +75,8 @@ class TextKeypointsDataset(data.Dataset):
                 d['text'].append(" ".join(line.split()[1:]))
         df = pd.DataFrame(d)
 
-        saved_column = df['keypoints']
+        # saved_column = df['keypoints']
+        saved_column = self.df_kp_text_train['keypoints']  # new one
         # Select sample
         X = []
 
@@ -69,7 +102,8 @@ class TextKeypointsDataset(data.Dataset):
         X.append(keys_x + keys_y)
         X = X[0]  # remove one parenthesis
 
-        saved_column = df['text']
+        # saved_column = df['text']
+        saved_column = self.df_kp_text_train['text']  # new one
 
         processed_data = self.preprocess_data(saved_column)  # preprocess
         processed_line = [int(i) for i in processed_data[index]]

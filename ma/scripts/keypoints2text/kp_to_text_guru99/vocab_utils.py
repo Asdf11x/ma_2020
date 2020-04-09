@@ -17,7 +17,7 @@ features:
         vocab list
     - Vocab list does NOT contain: special characters & numbers
     - standard feature: create vocab list
-    - premium feature: transform text file to lowecase / no non-character words / dont't -> do not
+    - additional feature: transform text file to lowecase / no non-character words / dont't -> do not
         - set transform_file=1 in start parameters
 """
 
@@ -170,7 +170,7 @@ class VocabUtils:
 
     def main(self):
         self.create_folders()
-        self.create_vocab_file()
+        # self.create_vocab_file()
 
         if self.transform_file:
             self.transform_sentence_file()
@@ -208,8 +208,20 @@ class VocabUtils:
             for line in f:
                 # tokenize
                 doc = self.nlp(line)
-                sentence_tok = [token.text.lower() for token in doc]
-                sentence_trans = [str(doc[0])]
+                sentence_tok = []
+
+                # check if first character is "_", if so build first char manually
+                if doc[0].text == "_":
+                    sentence_tok.append("_" + doc[1].text)
+                    for idx in range(2, len(doc)):
+                        sentence_tok.append(doc[idx].text.lower())
+                else:
+                    sentence_tok.append(doc[0].text)
+                    for idx in range(1, len(doc)):
+                        sentence_tok.append(doc[idx].text.lower())
+
+                sentence_trans = [str(sentence_tok[0])]
+
                 # clean tokenize
                 for word in sentence_tok[1:]:
                     # check if word is contracted (e.g. won't, don't, ...)
