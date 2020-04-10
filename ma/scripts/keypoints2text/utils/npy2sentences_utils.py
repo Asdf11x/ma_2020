@@ -3,13 +3,14 @@
 import pandas as pd
 import numpy as np
 import sys
+from pathlib import Path
 
 
 class NpyToSentence:
 
     def __init__(self, path_to_numpy_file, path_to_csv):
-        self.path_to_numpy_file = path_to_numpy_file
-        self.path_to_csv = path_to_csv
+        self.path_to_numpy_file = Path(path_to_numpy_file)
+        self.path_to_csv = Path(path_to_csv)
         old = np.load
         np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
 

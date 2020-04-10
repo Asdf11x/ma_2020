@@ -24,10 +24,11 @@ class TextKeypointsDataset(data.Dataset):
         self.path_to_vocab_file = path_to_vocab_file
         self.transform = transform
         self.int2word = {}
+        self.df_kp_text_train = pd.DataFrame()
         old = np.load
         np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
-        self.df_kp_text_train = pd.DataFrame()
-        self.keypoints2sentence()
+        self.load_data()
+        # self.keypoints2sentence()
         self.get_vocab_file()
 
     def keypoints2sentence(self):
@@ -45,7 +46,6 @@ class TextKeypointsDataset(data.Dataset):
         df_text = pd.DataFrame(d)
 
         speaker = []
-        text_en = []
         for kp in df_kp["keypoints"]:
             vid_speaker = kp[:11] + kp[11:].split('-')[0]
             speaker.append(vid_speaker)
@@ -55,39 +55,40 @@ class TextKeypointsDataset(data.Dataset):
                     kp2sentence.append([kp, df_text['text'][idx]])
                     break
         self.df_kp_text_train = pd.DataFrame(kp2sentence, columns=["keypoints", "text"])
-        # dffucc.to_csv(r'kp2sentence.txt', index=False)
-        # print(self.df_kp_text_train)
 
     def __len__(self):
         """Denotes the total number of samples"""
         with open(self.path_to_csv) as f:
             return sum(1 for line in f) - 1  # subtract 1, because of header line
 
+    def load_data(self):
+        self.df_kp_text_train = pd.read_csv(self.path_to_csv)
+        print(self.df_kp_text_train['text'][0])
+        print(type(self.df_kp_text_train['text'][0]))
+        print(self.df_kp_text_train)
+
+
+        # load from keypoints
+        self.saved_column_kp = self.df_kp_text_train['keypoints']  # new one
+        self.all_files = np.load(self.path_to_numpy_file).item()
+
+        # load for text
+        self.saved_column_text = self.df_kp_text_train['text']  # new one
+        self.processed_data = self.preprocess_data(self.saved_column_text)  # preprocess
+
     def __getitem__(self, index):
         """Generates one sample of data"""
-        d = {'keypoints': [], 'text': []}
-        with open(self.path_to_csv) as f:
-            for line in f:
-                d['keypoints'].append(line.split()[0])
-                d['text'].append(" ".join(line.split()[1:]))
-        df = pd.DataFrame(d)
 
-        # saved_column = df['keypoints']
-        saved_column = self.df_kp_text_train['keypoints']  # new one
-        # Select sample
         X = []
 
-        # load from .npy file
-        all_files = np.load(self.path_to_numpy_file).item()
-
         # get specific subdirectory corresponding to the index
-        subdirectory = saved_column[index]
+        subdirectory = self.saved_column_kp[index]
 
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         keys_x = []
         keys_y = []
-        for file in all_files[subdirectory]:
-            temp_df = all_files[subdirectory][file]
+        for file in self.all_files[subdirectory]:
+            temp_df = self.all_files[subdirectory][file]
             # init dictionaries & write x, y values into dictionary
             for k in keys:
                 keys_x.extend(temp_df['people'][0][k][0::3])
@@ -99,11 +100,7 @@ class TextKeypointsDataset(data.Dataset):
         X.append(keys_x + keys_y)
         X = X[0]  # remove one parenthesis
 
-        # saved_column = df['text']
-        saved_column = self.df_kp_text_train['text']  # new one
-
-        processed_data = self.preprocess_data(saved_column)  # preprocess
-        processed_line = [int(i) for i in processed_data[index]]
+        processed_line = [int(i) for i in self.processed_data[index]]
         processed_line.append(2)  # append EOS
 
         # Set padding length (uncomment following 2 lines for padding)
@@ -116,6 +113,8 @@ class TextKeypointsDataset(data.Dataset):
             processed_line = self.transform(processed_line)
         return X, processed_line
 
+
+
     def get_vocab_file(self):
         int2word = {}
         indx = 0
@@ -124,7 +123,6 @@ class TextKeypointsDataset(data.Dataset):
                 int2word[line.strip()] = indx
                 indx += 1
         return int2word
-
 
     def preprocess_data(self, data):
         unique_words = self.word2dictionary(data)  # get array of unique words
