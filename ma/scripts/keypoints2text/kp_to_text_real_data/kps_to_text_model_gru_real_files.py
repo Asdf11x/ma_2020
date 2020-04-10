@@ -20,8 +20,8 @@ import torch.utils
 import torch.utils.data
 import torch.nn.functional as F
 
-from keypoints2text.kp_to_text_guru99.kps_to_text_dataset_real_files import TextKeypointsDataset
-from keypoints2text.kp_to_text_guru99.kps_to_text_dataset_real_files import ToTensor
+from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import TextKeypointsDataset
+from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import ToTensor
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

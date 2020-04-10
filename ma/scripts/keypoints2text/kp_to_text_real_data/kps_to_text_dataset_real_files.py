@@ -13,13 +13,10 @@ from torch.utils import data
 import pandas as pd
 import numpy as np
 import numbers
-from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
-import csv
 
 
 class TextKeypointsDataset(data.Dataset):
     'Characterizes a dataset for PyTorch'
-
     def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None):
         """Initialization"""
         self.path_to_numpy_file = path_to_numpy_file
