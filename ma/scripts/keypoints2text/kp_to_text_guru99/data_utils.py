@@ -2,17 +2,7 @@
 data_utils.py: script for data processing during runtime
 """
 
-import torch
-from torch.utils import data
-import pandas as pd
-import numpy as np
-import numbers
-
-
 class DataUtils:
-
-    def __init__(self, path_to_vocab_file):
-        self.path_to_vocab_file = path_to_vocab_file
 
     def vocab_word2int(self, path_to_vocab_file):
         word2int = {}
@@ -41,3 +31,18 @@ class DataUtils:
             else:
                 result.append("<unk>")
         return result
+
+    def text2index(self, text_array, word2int):
+        """
+        use a word2int representation to turn an array of word sentences into an array of indices
+        :param text_array: array of words
+        :param word2int: a dictionary word2int
+        :return: int representation of a sentence
+        """
+        text2index = []
+        for sentence in text_array:
+            indexes = []
+            for word in sentence.split(' '):
+                indexes.append(word2int.get(word))
+            text2index.append(indexes)
+        return text2index
