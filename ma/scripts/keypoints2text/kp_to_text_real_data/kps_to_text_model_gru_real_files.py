@@ -27,6 +27,8 @@ from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Decoder
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Seq2Seq
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+import datetime
+import nltk
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -34,12 +36,24 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class RunModel:
 
     def __init__(self):
+        # model settings
         self.teacher_forcing_ratio = 0.5
-        self.embed_size = 16
+        self.embed_size = 16  # vocab list size
+        # TODO different hidden size for encoder and decoder, now: same size for both
         self.hidden_size = 512
         self.num_layers = 1
-        self.num_iteration = 10
+
+        # train settings
+        self.use_epochs = 1
+        self.num_iteration = 1
         self.num_iteration_eval = 5
+
+        self.hours = 0
+        self.minutes = 1
+
+
+        # variable setting
+        # TODO set "final" _tokens when not changing implementation of vocabs anymore
         self.UNK_token = 1
         self.SOS_token = 2
         self.EOS_token = 3
@@ -55,13 +69,13 @@ class RunModel:
         self.keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
 
         # get max lengths
+        # TODO skip too long data?
         # source_dim, target_dim = get_src_trgt_sizes()
         # print("source_dim: %d, target_dim: %d" % (source_dim, target_dim))
         # test set
         # source_dim_max:  291536
         # target_dim_max: 120
 
-        # TODO skip too long data
         self.source_dim = 100000  # length of source keypoints TODO: get automatically
         self.target_dim = 50  # length of target
 
@@ -70,12 +84,13 @@ class RunModel:
 
     def main(self):
 
-        # if os.path.exists("model.pt"):
-        #     self.model = torch.load("model.pt")
+        if os.path.exists("model.pt"):
+            self.model = torch.load("model.pt")
 
+        print(self.model)
         self.train_helper(self.keypoints_loader, self.num_iteration)
 
-        # torch.save(self.model, "model.pt")
+        torch.save(self.model, "model.pt")
 
         self.evaluate_model_own()
 
@@ -93,30 +108,53 @@ class RunModel:
         total_loss_iterations = 0
         it = iter(keypoints_loader)
 
-        # TODO learn with time in hours
         # TODO add save/load here
-        # hours = 0
-        # minutes = 15
-        # t_end = time.time() + 60 * minutes + 60 * 60 * hours
-        # while time.time() < t_end:
 
-        for idx in range(1, num_iteration + 1):
-            try:
-                iterator_data = next(it)
-            except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-                it = iter(keypoints_loader)
+        t_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours
 
-            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
-            target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
-            print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
+        # TODO shorten if/else
+        if self.use_epochs:
+            for idx in range(1, num_iteration + 1):
+                try:
+                    iterator_data = next(it)
+                except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+                    it = iter(keypoints_loader)
 
-            loss = self.train_own(source_ten, target_ten, model_optimizer, criterion)
-            total_loss_iterations += loss
+                source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
+                target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
+                print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
 
-            if idx % 1 == 0:
-                avarage_loss = total_loss_iterations / 1
-                total_loss_iterations = 0
-                print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
+                loss = self.train_own(source_ten, target_ten, model_optimizer, criterion)
+                total_loss_iterations += loss
+
+                if idx % 1 == 0:
+                    avarage_loss = total_loss_iterations / 1
+                    total_loss_iterations = 0
+                    print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
+        else:
+            idx_t = 0
+            while time.time() < t_end:
+                try:
+                    iterator_data = next(it)
+                except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+                    it = iter(keypoints_loader)
+
+                source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
+                target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
+                print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
+
+                loss = self.train_own(source_ten, target_ten, model_optimizer, criterion)
+                total_loss_iterations += loss
+
+                if idx_t % 1 == 0:
+                    avarage_loss = total_loss_iterations / 1
+                    total_loss_iterations = 0
+                    print('Epoch %d, average loss: %.2f' % (idx_t, avarage_loss))
+
+                    print('Remaining time: %s' % str(datetime.timedelta(seconds=int(t_end - time.time()))))
+                idx_t += 1
+
+
 
     # train
     def train_own(self, source_tensor, target_tensor, model_optimizer, criterion):
@@ -153,13 +191,14 @@ class RunModel:
                 out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
                 print("---" * 10)
 
-                flat_list = []
+                flat_list = []  # sentence representation in int
                 for sublist in out_ten.tolist():
                     for item in sublist:
                         flat_list.append(item)
 
-                print(flat_list)
-                print(DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file)))
+                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file))
+                hyp_str = " ".join(hypothesis)
+
                 print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
                 # print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
                 decoded_words = []
@@ -181,8 +220,16 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                print(decoded_words)
-                print(DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file)))
+                reference = DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file))
+                ref_str = " ".join(reference)
+
+                print("Hyp: %s" % hyp_str)
+                print("Ref: %s" % ref_str)
+
+                if len(hypothesis) >= 4 and len(reference) >= 4:
+                    # there may be several references
+                    bleu_score = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
+                    print("BLEU score: %d" % bleu_score)
 
 
 if __name__ == '__main__':
