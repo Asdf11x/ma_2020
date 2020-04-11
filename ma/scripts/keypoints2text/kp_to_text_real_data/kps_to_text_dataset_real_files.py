@@ -17,6 +17,7 @@ import numbers
 
 class TextKeypointsDataset(data.Dataset):
     'Characterizes a dataset for PyTorch'
+
     def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None):
         """Initialization"""
         self.path_to_numpy_file = path_to_numpy_file
@@ -63,10 +64,9 @@ class TextKeypointsDataset(data.Dataset):
 
     def load_data(self):
         self.df_kp_text_train = pd.read_csv(self.path_to_csv)
-        print(self.df_kp_text_train['text'][0])
-        print(type(self.df_kp_text_train['text'][0]))
-        print(self.df_kp_text_train)
-
+        # print(self.df_kp_text_train['text'][0])
+        # print(type(self.df_kp_text_train['text'][0]))
+        # print(self.df_kp_text_train)
 
         # load from keypoints
         self.saved_column_kp = self.df_kp_text_train['keypoints']  # new one
@@ -113,28 +113,33 @@ class TextKeypointsDataset(data.Dataset):
             processed_line = self.transform(processed_line)
         return X, processed_line
 
-
-
     def get_vocab_file(self):
-        int2word = {}
+        word2int = {}
         indx = 0
         with open(self.path_to_vocab_file) as f:
             for line in f:
-                int2word[line.strip()] = indx
+                word2int[line.strip()] = indx
                 indx += 1
-        return int2word
+        return word2int
 
     def preprocess_data(self, data):
-        unique_words = self.word2dictionary(data)  # get array of unique words
+        # TODO remove the computation of the vocab file here since its already done in data_utils
 
-        int2word = {0: "<unk>", 1: "<sos>", 2: "<eos>", 3: "."}  # add Start/End of sentence
-        int2word.update(dict(enumerate(unique_words, start=4)))  # map array of unique words to numbers
+        word2int = self.get_vocab_file()
+        int2word = {v: k for k, v in self.get_vocab_file().items()}
+
+        # unique_words = sorted(self.word2dictionary(data))  # get array of unique words
+        # int2word = {1: "<unk>", 2: "<sos>", 3: "<eos>", 4: "."}  # add Start/End of sentence
+        # int2word.update(dict(enumerate(unique_words, start=5)))  # map array of unique words to numbers
+        # print(int2word)
+        # inv_map = {v: k for k, v in self.get_vocab_file().items()}
         self.int2word = int2word
+        print(self.int2word)
 
         # e.g. print: 0 : 'who'
-        word2int = {char: ind for ind, char in int2word.items()}  # map numbers to unique words
+        # word2int = {char: ind for ind, char in int2word.items()}  # map numbers to unique words
         # e.g. print: 'who': 0
-        text2index = self.text2index(data, self.get_vocab_file())  # map sentences to words from dictionaries above
+        text2index = self.text2index(data, word2int)  # map sentences to words from dictionaries above
         single_sentence_tensor = torch.tensor(text2index[0]).view(-1, 1)  # get one sentence and turn it into a tensor
 
         # DataUtils().int2text([9, 16, 4, 4, 70, 4], int2word)

@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import numbers
 
+
 class DataUtils:
 
     # def __init__(self, int2word, word2int):
@@ -20,5 +21,5 @@ class DataUtils:
             if element in int2word:
                 result.append(int2word[element])
             else:
-                result.append("<UNK>")
+                result.append("<unk>")
         return result

@@ -145,9 +145,8 @@ class RunModel:
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 it = iter(keypoints_loader)
 
-            rnd = random.randint(20, 50)
-
-            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1) # TODO: remove crop (20 for testing)
+            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1,
+                                                                                   1)  # [:20] TODO: remove (20 for testing)
             target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
             print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
 
@@ -180,37 +179,75 @@ class RunModel:
         return epoch_loss
 
     def evaluate_model_own(self, text2kp):
-        # evaluate (kommt nur scheisse raus)
+        # evaluate (kommt da was sinnvolles raus?)
         it = iter(keypoints_loader)
-        nexty = next(it)
 
-        with torch.no_grad():
-            in_ten = torch.as_tensor(nexty[0], dtype=torch.float).view(-1, 1)
-            out_ten = torch.as_tensor(nexty[1], dtype=torch.long).view(-1, 1)
-            print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
-            # print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
-            print("---" * 9)
-            decoded_words = []
+        for idx in range(1, num_iteration_eval + 1):
+            try:
+                iterator_data = next(it)
+            except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+                it = iter(keypoints_loader)
 
-            output = model(in_ten, out_ten)
-            print("output.size: %d" % output.size(0))
-            # print(output)
-            print("---" * 10)
-            for ot in range(output.size(0)):
-                topv, topi = output[ot].topk(1)
+            with torch.no_grad():
+                in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
+                out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
+                print("---" * 10)
 
-                # print(topv)
-                # print(topi)
-                # print(topi[0].item())
-                if topi[0].item() == EOS_token:
-                    print("HALT STOP JETZT REDE ICH")
-                    decoded_words.append('<EOS>')
-                    break
-                else:
-                    decoded_words.append(topi[0].item())
+                flat_list = []
+                for sublist in out_ten.tolist():
+                    for item in sublist:
+                        flat_list.append(item)
 
-            print(decoded_words)
-            print(DataUtils().int2text(decoded_words, text2kp.int2word))
+                print(flat_list)
+                print(DataUtils().int2text(flat_list, text2kp.int2word))
+                print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
+                # print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
+                decoded_words = []
+
+                output = model(in_ten, out_ten)
+                # print("output.size: %d" % output.size(0))
+                # print(output)
+                print("---" * 10)
+                for ot in range(output.size(0)):
+                    topv, topi = output[ot].topk(1)
+
+                    # print(topv)
+                    # print(topi)
+                    # print(topi[0].item())
+                    if topi[0].item() == EOS_token:
+                        print("HALT STOP JETZT REDE ICH")
+                        decoded_words.append('<EOS>')
+                        break
+                    else:
+                        decoded_words.append(topi[0].item())
+
+                print(decoded_words)
+                print(DataUtils().int2text(decoded_words, text2kp.int2word))
+
+
+def get_src_trgt_sizes():
+    source_max = 0
+    target_max = 0
+    source_max_saved = []
+    target_max_saved = []
+    it = iter(keypoints_loader)
+
+    while 1:
+        try:
+            iterator_data = next(it)
+        except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+            return source_max, target_max
+        source_len = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1).size()[0]
+        target_len = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1).size()[0]
+
+        source_max_saved.append(source_len)
+        target_max_saved.append(target_len)
+
+        if source_len > source_max:
+            source_max = source_len
+
+        if target_len > target_max:
+            target_max = target_len
 
 
 if __name__ == '__main__':
@@ -218,20 +255,29 @@ if __name__ == '__main__':
     embed_size = 16
     hidden_size = 512
     num_layers = 1
-    num_iteration = 10
-    UNK_token = 0
-    SOS_token = 1
-    EOS_token = 2
+    num_iteration = 150
+    num_iteration_eval = 20
+    UNK_token = 1
+    SOS_token = 2
+    EOS_token = 3
 
     text2kp = TextKeypointsDataset(
         path_to_numpy_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy",
-        path_to_csv=r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_transformed.txt",
+        path_to_csv=r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt",
         path_to_vocab_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt",
         transform=ToTensor())
     keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
 
-    source_dim = 10000  # length of source vocab dictionary (current trash data = 5) TODO: get automatically
-    target_dim = 50  # length of target vocab dictionary?? TODO: Maybe max length of keypoint files (trashdata: ~5500)
+    # get max lengths
+    # source_dim, target_dim = get_src_trgt_sizes()
+    # print("source_dim: %d, target_dim: %d" % (source_dim, target_dim))
+    # test set
+    # source_dim_max:  291536
+    # target_dim_max: 120
+
+    # TODO skip too long data
+    source_dim = 100000  # length of source keypoints TODO: get automatically
+    target_dim = 50  # length of target
 
     # it = iter(keypoints_loader)
     run_model_own = RunModel()
