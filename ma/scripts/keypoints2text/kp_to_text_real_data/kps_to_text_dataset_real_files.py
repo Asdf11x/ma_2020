@@ -74,6 +74,8 @@ class TextKeypointsDataset(data.Dataset):
 
         # load for text
         self.saved_column_text = self.df_kp_text_train['text']  # new one
+
+
         self.processed_data = self.preprocess_data(self.saved_column_text)  # preprocess
 
     def __getitem__(self, index):
@@ -99,6 +101,8 @@ class TextKeypointsDataset(data.Dataset):
         keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
         X.append(keys_x + keys_y)
         X = X[0]  # remove one parenthesis
+
+
 
         processed_line = [int(i) for i in self.processed_data[index]]
         processed_line.append(2)  # append EOS
@@ -161,9 +165,9 @@ class TextKeypointsDataset(data.Dataset):
     def text2index(self, text_array, word2int):
         """
         use a word2int representation to turn an array of word sentences into an array of indices
-        :param text_array:
-        :param word2int:
-        :return:
+        :param text_array: array of words
+        :param word2int: a dictionary word2int
+        :return: int representation of a sentence
         """
         text2index = []
         for sentence in text_array:

@@ -23,7 +23,12 @@ import os
 import time
 from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import TextKeypointsDataset
 from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import ToTensor
+from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder
+from keypoints2text.kp_to_text_real_data.model_seq2seq import Decoder
+from keypoints2text.kp_to_text_real_data.model_seq2seq import Seq2Seq
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
