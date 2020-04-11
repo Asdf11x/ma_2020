@@ -19,7 +19,8 @@ import torch.optim as optim
 import torch.utils
 import torch.utils.data
 import torch.nn.functional as F
-
+import os
+import time
 from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import TextKeypointsDataset
 from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import ToTensor
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
@@ -139,14 +140,19 @@ class RunModel:
         total_loss_iterations = 0
         it = iter(keypoints_loader)
 
+        # TODO learn with time in hours
+        # hours = 0
+        # minutes = 15
+        # t_end = time.time() + 60 * minutes + 60 * 60 * hours
+        # while time.time() < t_end:
+
         for idx in range(1, num_iteration + 1):
             try:
                 iterator_data = next(it)
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 it = iter(keypoints_loader)
 
-            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1,
-                                                                                   1)  # [:20] TODO: remove (20 for testing)
+            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
             target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
             print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
 
@@ -283,6 +289,12 @@ if __name__ == '__main__':
     run_model_own = RunModel()
 
     model = run_model_own.init_model(source_dim, target_dim, hidden_size, embed_size, num_layers)
+
+    if os.path.exists("model.pt"):
+        model = torch.load("model.pt")
+
     run_model_own.train_helper(model, keypoints_loader, num_iteration)
+
+    torch.save(model, "model.pt")
 
     run_model_own.evaluate_model_own(text2kp)
