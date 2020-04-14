@@ -41,15 +41,15 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         # set the encoder output dimension, embed dimension, hidden dimension, and number of layers
-        self.embbed_dim = embbed_dim
-        self.hidden_dim = hidden_dim
         self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+        self.embbed_dim = embbed_dim
         self.num_layers = num_layers
 
         # initialize every layer with the appropriate dimension. For the decoder layer, it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
-        self.embedding = nn.Embedding(output_dim, self.embbed_dim)
+        self.embedding = nn.Embedding(self.output_dim, self.embbed_dim)  # TODO vocab size input for embedding + 1
         self.gru = nn.GRU(self.embbed_dim, self.hidden_dim, num_layers=self.num_layers)
-        self.out = nn.Linear(self.hidden_dim, output_dim)
+        self.out = nn.Linear(self.hidden_dim, self.output_dim)
         self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, input, hidden):
@@ -74,7 +74,6 @@ class Seq2Seq(nn.Module):
         self.SOS_token = SOS_token
         self.EOS_token = EOS_token
 
-
     def forward(self, source, target, teacher_forcing_ratio=0.5):
 
         input_length = source.size(0)  # get the input length (number of words in sentence)
@@ -91,7 +90,7 @@ class Seq2Seq(nn.Module):
             # .size() => (hidden_size = 512) => [1, 1, 512]
             encoder_output, encoder_hidden = self.encoder(source[i])
 
-        # use the encoder’s hidden layer as the decoder hidden
+        # use the encoder’s hidden layer as the decoder hidden (context vector)
         decoder_hidden = encoder_hidden.to(device)
 
         # add a token before the first predicted word
@@ -101,11 +100,12 @@ class Seq2Seq(nn.Module):
         # predict the output word from the current target word. If we enable the teaching force,
         # then the #next decoder input is the next word, else, use the decoder output highest value.
         for t in range(target_length):
+            # print(decoder_input)
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
             outputs[t] = decoder_output
             teacher_force = random.random() < teacher_forcing_ratio
             topv, topi = decoder_output.topk(1)
-            input = (target[t] if teacher_force else topi)
-            if (teacher_force == False and input.item() == self.EOS_token):
+            decoder_input = (target[t] if teacher_force else topi)
+            if (teacher_force == False and decoder_input.item() == self.EOS_token):
                 break
         return outputs

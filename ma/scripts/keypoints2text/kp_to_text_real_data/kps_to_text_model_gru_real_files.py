@@ -25,6 +25,7 @@ from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import T
 from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Decoder
+# from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnDecoderRNN
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Seq2Seq
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
 import datetime
@@ -36,20 +37,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class RunModel:
 
     def __init__(self):
+        # TODO create settings file
         # model settings
         self.teacher_forcing_ratio = 0.5
-        self.embed_size = 16  # vocab list size
+        self.embed_size = 256  # vocab list size
         # TODO different hidden size for encoder and decoder, now: same size for both
         self.hidden_size = 512
         self.num_layers = 1
 
         # train settings
-        self.use_epochs = 1
-        self.num_iteration = 1
-        self.num_iteration_eval = 5
-
+        self.use_epochs = 1  # 0: time, 1: epochs
+        self.num_iteration = 10
         self.hours = 0
-        self.minutes = 1
+        self.minutes = 30
+
+        # eval settings
+        self.num_iteration_eval = 20
 
 
         # variable setting
@@ -76,21 +79,26 @@ class RunModel:
         # source_dim_max:  291536
         # target_dim_max: 120
 
-        self.source_dim = 100000  # length of source keypoints TODO: get automatically
-        self.target_dim = 50  # length of target
+        count = 0
+        with open(self.path_to_vocab_file, 'r') as f:
+            for line in f:
+                count += 1
+        print("count: %d " %count)
+        self.input_dim = 100000  # length of source keypoints TODO: get automatically
+        self.output_dim = count + 1  # length of target
 
-        self.model = self.init_model(self.source_dim, self.target_dim, self.hidden_size, self.embed_size,
+        self.model = self.init_model(self.input_dim, self.output_dim, self.hidden_size, self.embed_size,
                                      self.num_layers)
 
     def main(self):
 
-        if os.path.exists("model.pt"):
-            self.model = torch.load("model.pt")
+        # if os.path.exists("model.pt"):
+        #     self.model = torch.load("model.pt")
 
         print(self.model)
         self.train_helper(self.keypoints_loader, self.num_iteration)
 
-        torch.save(self.model, "model.pt")
+        # torch.save(self.model, "model.pt")
 
         self.evaluate_model_own()
 
@@ -210,9 +218,6 @@ class RunModel:
                 for ot in range(output.size(0)):
                     topv, topi = output[ot].topk(1)
 
-                    # print(topv)
-                    # print(topi)
-                    # print(topi[0].item())
                     if topi[0].item() == self.EOS_token:
                         print("FOUND EOS STOP")
                         decoded_words.append('<EOS>')
