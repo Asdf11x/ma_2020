@@ -28,10 +28,10 @@ from keypoints2text.kp_to_text_real_data.model_seq2seq import Decoder
 # from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnDecoderRNN
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Seq2Seq
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
-from keypoints2text.kp_to_text_real_data.run_model_helper import Helper
-
+from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
 import datetime
 import nltk
+from copy import deepcopy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -75,26 +75,34 @@ class RunModel:
 
         # save / load
         self.save_model = 1
-        self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-15_16-06\model.pt"  # if not empty use path, else create new folder, use only when documentation
+        # self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-15_16-06\model.pt"  # if not empty use path, else create new folder, use only when documentation
+        self.save_model_file_path = r""  # if not empty use path, else create new folder, use only when documentation
         # exists
         self.save_model_folder_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models"
         self.save_loss = []  # list to save loss results
         self.save_eval = []  # list to save evaluation results
         self.save_epoch = 1  # save each x epoch
 
+        if self.save_model_file_path == "":
+            self.save_state = Save.new
+        else:
+            self.save_state = Save.update
+
         self.documentation = {"epochs_total": 0,
                               "time_total_s": 0,
                               "time_total_readable": "",
+                              "epochs": [],
                               "loss": [],
                               "elapsed_time": [],
-                              "Hyp": [],
-                              "Ref": [],
-                              "BLEU": []
+                              "hypothesis": [],
+                              "reference": [],
+                              "BLEU": [],
                               }
 
+        self.load_dic = deepcopy(self.documentation)
         self.load_model = 0
         self.load_model_path = ""
-
+        self.load_json_file_once = 1  # load json file once to get origin values
         # get max lengths
         # TODO skip too long data?
         # source_dim, target_dim = get_src_trgt_sizes()
@@ -157,6 +165,7 @@ class RunModel:
                                   start_time)
         else:
             idx = 0
+            idx_tmp = 0  # use this index for saving files and reseting it each time saving
             while time.time() < t_end:
                 self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
                                   start_time, t_end)
@@ -185,23 +194,30 @@ class RunModel:
         loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
         total_loss_iterations += loss
 
-
         if idx % self.show_after_epochs == 0:
-            avarage_loss = total_loss_iterations / self.show_after_epochs
+            average_loss = total_loss_iterations / self.show_after_epochs
             total_loss_iterations = 0
 
-            print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
+            print('Epoch %d, average loss: %.2f, elapsed time: %s'
+                  % (idx, average_loss, str(datetime.timedelta(seconds=int(time.time() - start_time)))))
 
             if t_end != "":
                 print('Remaining time: %s' % str(datetime.timedelta(seconds=int(t_end - time.time()))))
 
         if idx % self.save_epoch == 0:
             elapsed_time = str(datetime.timedelta(seconds=int(time.time() - start_time)))
-            print('Saving at epoch %d, average loss: %.2f' % (idx, avarage_loss))
-            self.save_loss.append('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
-            self.save_loss.append('Elapsed time: %s' % elapsed_time)
-            self.save_helper()
-            self.save_loss = []
+            print('Saving at epoch %d, average loss: %.2f' % (idx, average_loss))
+
+            # self.save_loss.append('Epoch %d, average loss: %.2f' % (idx, average_loss))
+            # self.save_loss.append('Elapsed time: %s' % elapsed_time)
+
+            self.documentation["loss"].append(average_loss)
+            self.documentation["epochs"].append(idx)
+            self.documentation["elapsed_time"].append(elapsed_time)
+            self.documentation["epochs_total"] = idx
+            self.documentation["time_total_s"] = int(time.time() - start_time)
+
+            self.save_helper(self.save_state, Mode.train)
 
     def train_model(self, source_tensor, target_tensor, model_optimizer, criterion):
         """
@@ -273,27 +289,46 @@ class RunModel:
                 reference = DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file))
                 ref_str = " ".join(reference)
 
-                print("Hyp: %s" % hyp_str)
-                print("Ref: %s" % ref_str)
-                self.save_eval.append("Hyp: %s" % hyp_str)
-                self.save_eval.append("Ref: %s" % ref_str)
-
                 if len(hypothesis) >= 4 or len(reference) >= 4:
                     # there may be several references
                     bleu_score = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
                     print("BLEU score: %d" % bleu_score)
-                    self.save_eval.append("BLEU score: %d\n" % bleu_score)
-                self.save_helper()
+                    self.documentation["BLEU"].append(bleu_score)
 
-    def save_helper(self):
+                print("Hyp: %s" % hyp_str)
+                print("Ref: %s" % ref_str)
+                self.documentation["hypothesis"].append(hyp_str)
+                self.documentation["reference"].append(ref_str)
+
+                self.save_helper(self.save_state, Mode.eval)
+
+    def save_helper(self, save, mode):
+
         if self.save_model:
-            if self.save_model_file_path == "":
+
+            # save in new file and model
+            if save == Save.new:
                 self.save_model_file_path = Helper().save_model(self.model, self.save_model_folder_path,
-                                                                self.save_model_file_path, self.save_loss,
-                                                                self.save_eval)
+                                                                self.save_model_file_path,
+                                                                self.documentation, self.save_state, mode)
+                self.load_dic = deepcopy(self.documentation)
+                self.load_dic["epochs_total"] = 0
+                self.load_dic["time_total_s"] = 0
+                self.save_state = Save.update
+                self.load_json_file_once = 0
+            # update file and model
             else:
-                Helper().save_model(self.model, self.save_model_folder_path, self.save_model_file_path, self.save_loss,
-                                    self.save_eval)
+                # read in old file once to get origin values
+                if self.load_json_file_once:
+                    self.load_dic = Helper().get_origin_json(self.save_model_file_path)
+                    self.load_json_file_once = 0
+                print(self.load_dic)
+                Helper().save_model(self.model, self.save_model_folder_path, self.save_model_file_path,
+                                    self.documentation, self.save_state, mode, self.load_dic)
+
+            # reset variables
+            self.documentation = {"epochs_total": 0, "time_total_s": 0, "time_total_readable": "", "epochs": [],
+                                  "loss": [], "elapsed_time": [], "hypothesis": [], "reference": [], "BLEU": []}
 
 
 if __name__ == '__main__':
