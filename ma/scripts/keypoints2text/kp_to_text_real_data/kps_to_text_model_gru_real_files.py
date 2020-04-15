@@ -220,7 +220,7 @@ class RunModel:
 
                     if topi[0].item() == self.EOS_token:
                         print("FOUND EOS STOP")
-                        decoded_words.append('<EOS>')
+                        decoded_words.append('<eos>')
                         break
                     else:
                         decoded_words.append(topi[0].item())

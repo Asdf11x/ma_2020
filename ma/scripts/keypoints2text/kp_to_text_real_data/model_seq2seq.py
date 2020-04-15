@@ -29,7 +29,10 @@ class Encoder(nn.Module):
 
         # intialize the GRU to take the input dimetion of embbed, and output dimention of hidden and
         # set the number of gru layers
+        # GRU doesnt need initialization:
+        # https://github.com/bentrevett/pytorch-seq2seq/blob/master/3%20-%20Neural%20Machine%20Translation%20by%20Jointly%20Learning%20to%20Align%20and%20Translate.ipynb
         self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)
+
 
     def forward(self, src):
         outputs, hidden = self.gru(src.view(1, 1, -1))
@@ -88,7 +91,7 @@ class Seq2Seq(nn.Module):
         for i in range(input_length):
             # encoder_output = encoder_hidden = Encoder.forward.outputs/hidden
             # .size() => (hidden_size = 512) => [1, 1, 512]
-            encoder_output, encoder_hidden = self.encoder(source[i])
+            encoder_output, encoder_hidden = self.encoder(source[i])  # encoder_output = encoder_hidden (last layer)
 
         # use the encoder’s hidden layer as the decoder hidden (context vector)
         decoder_hidden = encoder_hidden.to(device)
