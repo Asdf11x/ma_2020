@@ -26,7 +26,7 @@ class Mode(Enum):
 
 class Helper:
 
-    def save_model(self, model, save_model_folder_path, save_model_file_path, doc, state, mode, doc_load_once={}):
+    def save_model(self, model, save_model_folder_path, save_model_file_path, doc, state, mode):
         save_model_folder_path = Path(save_model_folder_path)
 
         if state == Save.new:
@@ -48,31 +48,28 @@ class Helper:
             # TODO uncommment to save model (testing)
             # torch.save(model, save_model_file_path)
 
+            doc["loss_time_epoch"].append([float(doc["loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
+                                      doc["epochs_total"]])
+
             with open(current_folder / 'info.txt', 'w') as outfile:
                 json.dump(doc, outfile)
 
             return save_model_file_path
 
         elif state == Save.update:
-            current_folder = Path(save_model_file_path.parent)
+            current_folder = Path(save_model_file_path).parent
 
             with open(current_folder / 'info.txt') as json_file:
                 doc_load = json.load(json_file)
 
             if mode == Mode.train:
-                doc_load["epochs_total"] = doc_load_once["epochs_total"] + doc["epochs_total"]
-                doc_load["time_total_s"] = doc_load_once["time_total_s"] + doc["time_total_s"]
+                doc_load["epochs_total"] = doc_load["epochs_total"] + doc["epochs_total"]
+                doc_load["time_total_s"] = doc_load["time_total_s"] + doc["time_total_s"]
                 doc_load["time_total_readable"] = \
                     str(timedelta(seconds=(int(doc_load["time_total_s"]))))  # convert the time above
 
-                for element in doc["epochs"]:
-                    doc_load["epochs"].append(element)
-
-                for element in doc["loss"]:
-                    doc_load["loss"].append(round(element, 2))
-
-                for element in doc["elapsed_time"]:
-                    doc_load["elapsed_time"].append(element)
+                doc_load["loss_time_epoch"].append([float(doc["loss"][0]), doc_load["time_total_readable"],
+                                                    doc_load["epochs_total"]])
 
             elif mode == Mode.eval:
                 for element in doc["hypothesis"]:

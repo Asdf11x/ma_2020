@@ -49,10 +49,10 @@ class RunModel:
 
         # train settings
         self.use_epochs = 1  # 0: time, 1: epochs
-        self.num_iteration = 5
+        self.num_iteration = 15
         self.hours = 0
         self.minutes = 30
-        self.show_after_epochs = 1
+        self.show_after_epochs = 5
 
         # eval settings
         self.num_iteration_eval = 1
@@ -75,13 +75,12 @@ class RunModel:
 
         # save / load
         self.save_model = 1
-        # self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-15_16-06\model.pt"  # if not empty use path, else create new folder, use only when documentation
-        self.save_model_file_path = r""  # if not empty use path, else create new folder, use only when documentation
+        self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-15_23-19\model.pt"  # if not empty use path, else create new folder, use only when documentation
         # exists
         self.save_model_folder_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models"
         self.save_loss = []  # list to save loss results
         self.save_eval = []  # list to save evaluation results
-        self.save_epoch = 1  # save each x epoch
+        self.save_epoch = 5  # save each x epoch
 
         if self.save_model_file_path == "":
             self.save_state = Save.new
@@ -91,14 +90,14 @@ class RunModel:
         self.documentation = {"epochs_total": 0,
                               "time_total_s": 0,
                               "time_total_readable": "",
-                              "epochs": [],
                               "loss": [],
-                              "elapsed_time": [],
+                              "loss_time_epoch": [],
                               "hypothesis": [],
                               "reference": [],
                               "BLEU": [],
                               }
-
+        self.elapsed_time_sum = 0
+        self.idx_save = 0
         self.load_dic = deepcopy(self.documentation)
         self.load_model = 0
         self.load_model_path = ""
@@ -114,7 +113,7 @@ class RunModel:
         with open(self.path_to_vocab_file, 'r') as f:
             for line in f:
                 count += 1
-        print("count: %d " % count)
+        print("amount of unique words in vocab file: %d " % count)
         # TODO: get input_dim automatically?
         # TODO: crop max input_dim?
         self.input_dim = 100000  # length of source keypoints
@@ -154,25 +153,27 @@ class RunModel:
         criterion = nn.L1Loss()
         total_loss_iterations = 0
         it = iter(keypoints_loader)
-        start_time = time.time()
 
-        t_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours
+        start_time = time.time()  # used for tracking time when saving, refreshed each run
+        t_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours  # remaining training time
 
         # TODO shorten if/else
         if self.use_epochs:
             for idx in range(1, num_iteration + 1):
                 self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
                                   start_time)
+                start_time = time.time()
+
         else:
-            idx = 0
-            idx_tmp = 0  # use this index for saving files and reseting it each time saving
+            idx = 1
             while time.time() < t_end:
                 self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
                                   start_time, t_end)
+                start_time = time.time()
                 idx += 1
 
     def train_helper(self, criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations, start_time,
-                     t_end=""):
+                     t_end=0.0):
         """
         main -> train_run -> train_helper -> train_model
         use this model to help with computing the loss and reduce train_run
@@ -188,36 +189,41 @@ class RunModel:
             iterator_data = next(it)
         except StopIteration:  # reinitialize data loader if num_iteration > amount of data
             it = iter(keypoints_loader)
-        source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
+
+        source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)  # TODO remove [:20]
         target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
         print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
         loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
         total_loss_iterations += loss
 
         if idx % self.show_after_epochs == 0:
+            elapsed_time_s = int(time.time() - start_time)
+            self.elapsed_time_sum += elapsed_time_s
+
+            remaining_time = int(t_end - time.time())
             average_loss = total_loss_iterations / self.show_after_epochs
             total_loss_iterations = 0
 
             print('Epoch %d, average loss: %.2f, elapsed time: %s'
-                  % (idx, average_loss, str(datetime.timedelta(seconds=int(time.time() - start_time)))))
+                  % (idx, average_loss, str(datetime.timedelta(seconds=self.elapsed_time_sum))))
 
-            if t_end != "":
-                print('Remaining time: %s' % str(datetime.timedelta(seconds=int(t_end - time.time()))))
+            if t_end != 0.0:
+                print('Remaining time: %s' % str(datetime.timedelta(seconds=remaining_time)))
 
         if idx % self.save_epoch == 0:
-            elapsed_time = str(datetime.timedelta(seconds=int(time.time() - start_time)))
+            elapsed_time_s = int(time.time() - start_time)
+
             print('Saving at epoch %d, average loss: %.2f' % (idx, average_loss))
 
-            # self.save_loss.append('Epoch %d, average loss: %.2f' % (idx, average_loss))
-            # self.save_loss.append('Elapsed time: %s' % elapsed_time)
+            # refresh idx_t each time saving is callled
+            idx_t = idx - self.idx_save
 
-            self.documentation["loss"].append(average_loss)
-            self.documentation["epochs"].append(idx)
-            self.documentation["elapsed_time"].append(elapsed_time)
-            self.documentation["epochs_total"] = idx
-            self.documentation["time_total_s"] = int(time.time() - start_time)
+            self.documentation["epochs_total"] = idx_t
+            self.documentation["time_total_s"] = elapsed_time_s
+            self.documentation["loss"] = [round(average_loss, 2)]
 
             self.save_helper(self.save_state, Mode.train)
+            self.idx_save = idx
 
     def train_model(self, source_tensor, target_tensor, model_optimizer, criterion):
         """
@@ -291,7 +297,7 @@ class RunModel:
 
                 if len(hypothesis) >= 4 or len(reference) >= 4:
                     # there may be several references
-                    bleu_score = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
+                    bleu_score = round(nltk.translate.bleu_score.sentence_bleu([reference], hypothesis),2)
                     print("BLEU score: %d" % bleu_score)
                     self.documentation["BLEU"].append(bleu_score)
 
@@ -311,24 +317,23 @@ class RunModel:
                 self.save_model_file_path = Helper().save_model(self.model, self.save_model_folder_path,
                                                                 self.save_model_file_path,
                                                                 self.documentation, self.save_state, mode)
-                self.load_dic = deepcopy(self.documentation)
-                self.load_dic["epochs_total"] = 0
-                self.load_dic["time_total_s"] = 0
                 self.save_state = Save.update
-                self.load_json_file_once = 0
+
             # update file and model
             else:
-                # read in old file once to get origin values
-                if self.load_json_file_once:
-                    self.load_dic = Helper().get_origin_json(self.save_model_file_path)
-                    self.load_json_file_once = 0
-                print(self.load_dic)
                 Helper().save_model(self.model, self.save_model_folder_path, self.save_model_file_path,
-                                    self.documentation, self.save_state, mode, self.load_dic)
+                                    self.documentation, self.save_state, mode)
 
             # reset variables
-            self.documentation = {"epochs_total": 0, "time_total_s": 0, "time_total_readable": "", "epochs": [],
-                                  "loss": [], "elapsed_time": [], "hypothesis": [], "reference": [], "BLEU": []}
+            self.documentation = {"epochs_total": 0,
+                                  "time_total_s": 0,
+                                  "time_total_readable": "",
+                                  "loss": [],
+                                  "loss_time_epoch": [],
+                                  "hypothesis": [],
+                                  "reference": [],
+                                  "BLEU": [],
+                                  }
 
 
 if __name__ == '__main__':
