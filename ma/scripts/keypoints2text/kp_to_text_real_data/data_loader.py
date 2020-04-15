@@ -1,5 +1,5 @@
 """
-kps_to_text_dataset_real_files.py:
+data_loader.py:
 Based on that tutorial
 https://stanford.edu/~shervine/blog/pytorch-how-to-generate-data-parallel
 

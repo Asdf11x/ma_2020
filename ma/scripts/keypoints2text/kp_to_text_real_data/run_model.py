@@ -21,13 +21,15 @@ import torch.utils.data
 import torch.nn.functional as F
 import os
 import time
-from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import TextKeypointsDataset
-from keypoints2text.kp_to_text_real_data.kps_to_text_dataset_real_files import ToTensor
+from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset
+from keypoints2text.kp_to_text_real_data.data_loader import ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Decoder
 # from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnDecoderRNN
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Seq2Seq
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+from keypoints2text.kp_to_text_real_data.run_model_helper import Helper
+
 import datetime
 import nltk
 
@@ -47,13 +49,13 @@ class RunModel:
 
         # train settings
         self.use_epochs = 1  # 0: time, 1: epochs
-        self.num_iteration = 10
+        self.num_iteration = 5
         self.hours = 0
         self.minutes = 30
+        self.show_after_epochs = 1
 
         # eval settings
-        self.num_iteration_eval = 20
-
+        self.num_iteration_eval = 1
 
         # variable setting
         # TODO set "final" _tokens when not changing implementation of vocabs anymore
@@ -71,34 +73,57 @@ class RunModel:
             transform=ToTensor())
         self.keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
 
+        # save / load
+        self.save_model = 1
+        self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-15_16-06\model.pt"  # if not empty use path, else create new folder, use only when documentation
+        # exists
+        self.save_model_folder_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models"
+        self.save_loss = []  # list to save loss results
+        self.save_eval = []  # list to save evaluation results
+        self.save_epoch = 1  # save each x epoch
+
+        self.documentation = {"epochs_total": 0,
+                              "time_total_s": 0,
+                              "time_total_readable": "",
+                              "loss": [],
+                              "elapsed_time": [],
+                              "Hyp": [],
+                              "Ref": [],
+                              "BLEU": []
+                              }
+
+        self.load_model = 0
+        self.load_model_path = ""
+
         # get max lengths
         # TODO skip too long data?
         # source_dim, target_dim = get_src_trgt_sizes()
         # print("source_dim: %d, target_dim: %d" % (source_dim, target_dim))
         # test set
-        # source_dim_max:  291536
+        # source_dim_max: 291536
         # target_dim_max: 120
-
         count = 0
         with open(self.path_to_vocab_file, 'r') as f:
             for line in f:
                 count += 1
-        print("count: %d " %count)
-        self.input_dim = 100000  # length of source keypoints TODO: get automatically
+        print("count: %d " % count)
+        # TODO: get input_dim automatically?
+        # TODO: crop max input_dim?
+        self.input_dim = 100000  # length of source keypoints
         self.output_dim = count + 1  # length of target
 
         self.model = self.init_model(self.input_dim, self.output_dim, self.hidden_size, self.embed_size,
                                      self.num_layers)
 
     def main(self):
-
-        # if os.path.exists("model.pt"):
-        #     self.model = torch.load("model.pt")
+        if self.load_model:
+            if os.path.exists(self.load_model_path):
+                self.model = torch.load(self.load_model_path)
 
         print(self.model)
-        self.train_helper(self.keypoints_loader, self.num_iteration)
+        self.train_run(self.keypoints_loader, self.num_iteration)
 
-        # torch.save(self.model, "model.pt")
+        # self.save_helper()
 
         self.evaluate_model_own()
 
@@ -109,74 +134,94 @@ class RunModel:
         model = Seq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
         return model
 
-    def train_helper(self, keypoints_loader, num_iteration):
+    def train_run(self, keypoints_loader, num_iteration):
+        """
+        the outer most train method, the whole train procesdure is started here
+        :param keypoints_loader:
+        :param num_iteration:
+        :return:
+        """
         self.model.train()
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         criterion = nn.L1Loss()
         total_loss_iterations = 0
         it = iter(keypoints_loader)
-
-        # TODO add save/load here
+        start_time = time.time()
 
         t_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours
 
         # TODO shorten if/else
         if self.use_epochs:
             for idx in range(1, num_iteration + 1):
-                try:
-                    iterator_data = next(it)
-                except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-                    it = iter(keypoints_loader)
-
-                source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
-                target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
-                print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
-
-                loss = self.train_own(source_ten, target_ten, model_optimizer, criterion)
-                total_loss_iterations += loss
-
-                if idx % 1 == 0:
-                    avarage_loss = total_loss_iterations / 1
-                    total_loss_iterations = 0
-                    print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
+                self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
+                                  start_time)
         else:
-            idx_t = 0
+            idx = 0
             while time.time() < t_end:
-                try:
-                    iterator_data = next(it)
-                except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-                    it = iter(keypoints_loader)
+                self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
+                                  start_time, t_end)
+                idx += 1
 
-                source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
-                target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
-                print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
+    def train_helper(self, criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations, start_time,
+                     t_end=""):
+        """
+        main -> train_run -> train_helper -> train_model
+        use this model to help with computing the loss and reduce train_run
+        :param criterion:
+        :param idx:
+        :param it:
+        :param keypoints_loader:
+        :param model_optimizer:
+        :param total_loss_iterations:
+        :return:
+        """
+        try:
+            iterator_data = next(it)
+        except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+            it = iter(keypoints_loader)
+        source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
+        target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
+        print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
+        loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
+        total_loss_iterations += loss
 
-                loss = self.train_own(source_ten, target_ten, model_optimizer, criterion)
-                total_loss_iterations += loss
 
-                if idx_t % 1 == 0:
-                    avarage_loss = total_loss_iterations / 1
-                    total_loss_iterations = 0
-                    print('Epoch %d, average loss: %.2f' % (idx_t, avarage_loss))
+        if idx % self.show_after_epochs == 0:
+            avarage_loss = total_loss_iterations / self.show_after_epochs
+            total_loss_iterations = 0
 
-                    print('Remaining time: %s' % str(datetime.timedelta(seconds=int(t_end - time.time()))))
-                idx_t += 1
+            print('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
 
+            if t_end != "":
+                print('Remaining time: %s' % str(datetime.timedelta(seconds=int(t_end - time.time()))))
 
+        if idx % self.save_epoch == 0:
+            elapsed_time = str(datetime.timedelta(seconds=int(time.time() - start_time)))
+            print('Saving at epoch %d, average loss: %.2f' % (idx, avarage_loss))
+            self.save_loss.append('Epoch %d, average loss: %.2f' % (idx, avarage_loss))
+            self.save_loss.append('Elapsed time: %s' % elapsed_time)
+            self.save_helper()
+            self.save_loss = []
 
-    # train
-    def train_own(self, source_tensor, target_tensor, model_optimizer, criterion):
+    def train_model(self, source_tensor, target_tensor, model_optimizer, criterion):
+        """
+        the inner most method to train the model, the actual training is implemented here
+        :param source_tensor:
+        :param target_tensor:
+        :param model_optimizer:
+        :param criterion:
+        :return:
+        """
+
         model_optimizer.zero_grad()
         loss = 0.0
         output = self.model(source_tensor, target_tensor)
         num_iter = output.size(0)
 
         # calculate the loss from a predicted sentence with the expected result
-        for ot in range(num_iter):
-            # print("output %s, target %s" % (str(output.size()), str(target_tensor.size())))
-            # print("output %s, target %s" % (str(output[ot].size()), str(target_tensor[ot].size())))
-            # print(output)
-            loss += criterion(output[ot], target_tensor[ot])
+        for ot in range(num_iter):  # creating user warning of tensor
+            loss += criterion(output[ot], target_tensor[ot].view(1, -1))
+
         loss.backward()
         model_optimizer.step()
         epoch_loss = loss.item() / num_iter
@@ -230,11 +275,25 @@ class RunModel:
 
                 print("Hyp: %s" % hyp_str)
                 print("Ref: %s" % ref_str)
+                self.save_eval.append("Hyp: %s" % hyp_str)
+                self.save_eval.append("Ref: %s" % ref_str)
 
-                if len(hypothesis) >= 4 and len(reference) >= 4:
+                if len(hypothesis) >= 4 or len(reference) >= 4:
                     # there may be several references
                     bleu_score = nltk.translate.bleu_score.sentence_bleu([reference], hypothesis)
                     print("BLEU score: %d" % bleu_score)
+                    self.save_eval.append("BLEU score: %d\n" % bleu_score)
+                self.save_helper()
+
+    def save_helper(self):
+        if self.save_model:
+            if self.save_model_file_path == "":
+                self.save_model_file_path = Helper().save_model(self.model, self.save_model_folder_path,
+                                                                self.save_model_file_path, self.save_loss,
+                                                                self.save_eval)
+            else:
+                Helper().save_model(self.model, self.save_model_folder_path, self.save_model_file_path, self.save_loss,
+                                    self.save_eval)
 
 
 if __name__ == '__main__':
