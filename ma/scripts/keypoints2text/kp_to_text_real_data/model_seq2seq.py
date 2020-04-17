@@ -33,7 +33,6 @@ class Encoder(nn.Module):
         # https://github.com/bentrevett/pytorch-seq2seq/blob/master/3%20-%20Neural%20Machine%20Translation%20by%20Jointly%20Learning%20to%20Align%20and%20Translate.ipynb
         self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)
 
-
     def forward(self, src):
         outputs, hidden = self.gru(src.view(1, 1, -1))
         return outputs, hidden  # outputs = hidden
@@ -59,6 +58,7 @@ class Decoder(nn.Module):
         # reshape the input to (1, batch_size)
         input = input.view(1, -1)
         embedded = F.relu(self.embedding(input))
+
         output, hidden = self.gru(embedded, hidden)
         prediction = self.softmax(self.out(output[0]))
 

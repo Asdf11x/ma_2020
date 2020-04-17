@@ -27,9 +27,19 @@ class Mode(Enum):
 class Helper:
 
     def save_model(self, model, save_model_folder_path, save_model_file_path, doc, state, mode):
+        """
+        Use as documentation for a training run, saved training values are time, epochs, loss. Saved evaluation values are
+        Hypothesis sample sentence, Reference sample sentence and BLEU score
+
+        This method is executed in a extra "save loop", so each  x epochs (x=save_epoch) this method is run,
+        saves values of the last x epochs and adds them to already saved ones
+        """
         save_model_folder_path = Path(save_model_folder_path)
 
+        # if new, a new document is created and all values are saved in that document
+        # new is only the first save of a new model, then Save is set to update
         if state == Save.new:
+
             save_model_folder_path = Path(save_model_folder_path)
 
             # create timestring to name folde to save current model
@@ -49,14 +59,16 @@ class Helper:
             # torch.save(model, save_model_file_path)
 
             doc["loss_time_epoch"].append([float(doc["loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
-                                      doc["epochs_total"]])
+                                           doc["epochs_total"]])
 
             with open(current_folder / 'info.txt', 'w') as outfile:
                 json.dump(doc, outfile)
 
             return save_model_file_path
 
+        # if update: load old values from a file and add new values to it
         elif state == Save.update:
+
             current_folder = Path(save_model_file_path).parent
 
             with open(current_folder / 'info.txt') as json_file:
