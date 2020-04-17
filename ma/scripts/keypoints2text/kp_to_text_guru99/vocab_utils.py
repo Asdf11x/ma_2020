@@ -276,10 +276,11 @@ class VocabUtils:
             sorted_words = sorted(unique_words)
 
             # add special tokens to the beginning
-            sorted_words.insert(0, "<unk>")
-            sorted_words.insert(1, "<sos>")
-            sorted_words.insert(2, "<eos>")
-            sorted_words.insert(3, ".")
+            sorted_words.insert(0, "<pad>")
+            sorted_words.insert(1, "<unk>")
+            sorted_words.insert(2, "<sos>")
+            sorted_words.insert(3, "<eos>")
+            sorted_words.insert(4, ".")
 
             print("Unique words (incl. UNK/EOS/SOS ): %d" % len(sorted_words))
 

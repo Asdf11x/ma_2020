@@ -1,6 +1,8 @@
 """
-data_utils.py: script for data processing during runtime
+data_utils.py: script for data handling during runtime
 """
+
+import torch
 
 class DataUtils:
 
@@ -60,7 +62,7 @@ class DataUtils:
             text2index.append(indexes)
         return text2index
 
-    def get_file_length(self, path_to_vocab_file):
+    def get_vocab_file_length(self, path_to_vocab_file):
         """
         Get file length of a vocab file
         -- !! Assuming each line contains ONE SINGLE UNIQUE WORD !! --
@@ -72,3 +74,52 @@ class DataUtils:
             for line in f:
                 count += 1
         return count
+
+    def get_kp_text_max_lengths(self, dl_train, dl_val, dl_test):
+        """
+        Get the length of the longest keypoint file and the length of the longest sentence
+        :param dl_train: data loader container train data
+        :param dl_val: data loader container val data
+        :param dl_test: data loader container test data
+        :return: len of longets kp file, len of longest sentence, [max lenghts of datasets]
+        """
+        kp_max_total = 0
+        text_max_total = 0
+        kp_text_max_list = []  # save all the values because it takes time to compute and might be useful
+        for loader in [dl_train, dl_val, dl_test]:
+            max_kp, max_text = self.get_max_loader_length(loader)
+            kp_text_max_list.append([max_kp, max_text])
+
+            if max_kp > kp_max_total:
+                kp_max_total = max_kp
+
+            if max_text > text_max_total:
+                text_max_total = max_text
+
+        return kp_max_total, text_max_total, kp_text_max_list
+
+    def get_max_loader_length(self, dl):
+        """
+        Get max length of keypoints and text of a folder for the whole dataset (one data_loader)
+        :param dl: data laoder
+        :return: max length of keypoints and text (dont need to be necessary the same folder)
+        """
+        kp_max = 0
+        text_max = 0
+        it = iter(dl)
+
+        while 1:
+            try:
+                iterator_data = next(it)
+            except StopIteration:  # if StopIteration is raised, all data of a loader is used
+                break
+            source_ten_len = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1).size()[0]
+            target_ten_len = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1).size()[0]
+
+            if source_ten_len > kp_max:
+                kp_max = source_ten_len
+
+            if target_ten_len > text_max:
+                text_max = target_ten_len
+        return kp_max, text_max
+

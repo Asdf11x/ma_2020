@@ -1,5 +1,5 @@
 """
-run_model_helper.py: contains methods not linked directly to the model
+run_model_helper.py: contains methods not directly involved in training/evaluating the model
 """
 
 import os
@@ -60,6 +60,11 @@ class Helper:
 
             doc["loss_time_epoch"].append([float(doc["loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
                                            doc["epochs_total"]])
+
+            # TODO save model representation correctly
+            # TODO save evaluation correctly or find a nice way to save it
+
+            doc["model"] = repr(model)
 
             with open(current_folder / 'info.txt', 'w') as outfile:
                 json.dump(doc, outfile)

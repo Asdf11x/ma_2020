@@ -21,12 +21,16 @@ class TextKeypointsDataset(data.Dataset):
     Characterizes a dataset for PyTorch
     """
 
-    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None):
-        # load paths
+    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None, kp_max_len=0,
+                 text_max_len=0):
         self.path_to_numpy_file = path_to_numpy_file
         self.path_to_csv = path_to_csv
         self.path_to_vocab_file = path_to_vocab_file
         self.transform = transform
+        self.kp_max_len = kp_max_len
+        self.text_max_len = text_max_len
+
+        # init variables
         self.int2word = {}
         self.df_kp_text_train = pd.DataFrame()
 
@@ -38,14 +42,16 @@ class TextKeypointsDataset(data.Dataset):
         self.df_kp_text_train = pd.read_csv(self.path_to_csv)
 
         # load keypoints
-        self.saved_column_kp = self.df_kp_text_train['keypoints']  # new one
+        self.saved_column_kp = self.df_kp_text_train['keypoints']
         self.all_files = np.load(self.path_to_numpy_file).item()
 
         # load text
-        self.saved_column_text = self.df_kp_text_train['text']  # new one
+        self.saved_column_text = self.df_kp_text_train['text']
 
         # load vocab dictionaries
         self.word2int = DataUtils().vocab_word2int(self.path_to_vocab_file)  # e.g. print: 'who': 0
+
+        np.load = old  # reset np.load back or pickle error
 
     def __len__(self):
         """Denotes the total number of samples"""
@@ -58,8 +64,7 @@ class TextKeypointsDataset(data.Dataset):
         :param index:
         :return:
         """
-
-        # load keypoints
+        # init keypoints
         keypoints = []
 
         # get specific subdirectory corresponding to the index
@@ -78,6 +83,16 @@ class TextKeypointsDataset(data.Dataset):
         # get x and y values and concat the values
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
         keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
+
+        # check if padding length is set, because the same dataloader is also used to find out the max length without padding
+        if self.kp_max_len != 0:
+            padding_length = int((self.kp_max_len - len(keys_x) * 2) / 2)
+        else:
+            padding_length = self.kp_max_len
+
+        keys_x += [0.0] * (padding_length - len(keys_x))
+        keys_y += [0.0] * (padding_length - len(keys_x))
+
         keypoints.append(keys_x + keys_y)
         keypoints = keypoints[0]  # remove one parenthesis
 
@@ -85,11 +100,11 @@ class TextKeypointsDataset(data.Dataset):
         # take the sentence column of .csv file and the word2int representation
         # -> transform sentence to index and take one line of it
         sentence = [int(i) for i in DataUtils().text2index(self.saved_column_text, self.word2int)[index]]
-        sentence.append(2)  # append EOS
+        sentence.append(self.word2int["<eos>"])  # append EOS (should be int(3))
 
         # Set padding length (uncomment following 2 lines for padding)
-        # padding_length = 50
-        # sentence += ['0'] * (padding_length - len(sentence))
+        padding_length = self.text_max_len
+        sentence += ['0'] * (padding_length - len(sentence))
 
         # transform to tensor via ToTensor TODO remove class and implement here?
         if self.transform:

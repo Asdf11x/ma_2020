@@ -12,21 +12,15 @@ features /todos:
 """
 
 from __future__ import unicode_literals, division
-import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils
 import torch.utils.data
-import torch.nn.functional as F
 import os
 import time
-from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset
-from keypoints2text.kp_to_text_real_data.data_loader import ToTensor
-from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder
-from keypoints2text.kp_to_text_real_data.model_seq2seq import Decoder
-# from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnDecoderRNN
-from keypoints2text.kp_to_text_real_data.model_seq2seq import Seq2Seq
+from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
+from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
 from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
 import datetime
@@ -49,71 +43,76 @@ class RunModel:
 
         # train settings
         self.use_epochs = 1  # 0: time, 1: epochs
-        self.num_iteration = 15
+        self.num_iteration = 2
         self.hours = 0
         self.minutes = 30
         self.show_after_epochs = 5
 
         # eval settings
-        self.num_iteration_eval = 1
-        self.evaluate_model = 0 # 0: model is not evaluated, 1: model is evaluated
+        self.evaluate_model = 1  # 0: model is not evaluated, 1: model is evaluated
+        self.num_iteration_eval = 20
 
         # test settings
-        self.test_model = 0 # 0: model is not tested, 1: model is tested
+        self.test_model = 0  # 0: model is not tested, 1: model is tested
 
 
-        # variable setting
+        # train
+        self.path_to_numpy_file_train = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
+        self.path_to_csv_train = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt"
+        self.path_to_vocab_file_train = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
+
+        # val
+        self.path_to_numpy_file_val = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
+        self.path_to_csv_val = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt"
+        self.path_to_vocab_file_val = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
+
+        # test
+        self.path_to_numpy_file_test = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
+        self.path_to_csv_test = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt"
+        self.path_to_vocab_file_test = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
+
+        # vocab file, containing unique words for all (train, val & test)
+        self.path_to_vocab_file_all = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
+
+        # Dataloaders for train, val & test
+        text2kp_train = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_train,
+            path_to_csv=self.path_to_csv_train,
+            path_to_vocab_file=self.path_to_vocab_file_train,
+            transform=ToTensor())
+        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=1, shuffle=True,
+                                                             num_workers=0)
+
+        # text2kp_val = TextKeypointsDataset(
+        #     path_to_numpy_file=self.path_to_numpy_file_train,
+        #     path_to_csv=self.path_to_csv_train,
+        #     path_to_vocab_file=self.path_to_vocab_file_train,
+        #     transform=ToTensor())
+        # self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True, num_workers=0)
+        #
+        # text2kp_test = TextKeypointsDataset(
+        #     path_to_numpy_file=self.path_to_numpy_file_train,
+        #     path_to_csv=self.path_to_csv_train,
+        #     path_to_vocab_file=self.path_to_vocab_file_train,
+        #     transform=ToTensor())
+        # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
+
+        # set tokens
+        self.PAD_token = 0
         self.UNK_token = 1
         self.SOS_token = 2
         self.EOS_token = 3
 
-        # train
-        self.path_to_numpy_file = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
-        self.path_to_csv = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt"
-        self.path_to_vocab_file = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
-
-        # val
-        self.path_to_numpy_file = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
-        self.path_to_csv = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt"
-        self.path_to_vocab_file = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
-
-        # test
-        self.path_to_numpy_file = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
-        self.path_to_csv = r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt"
-        self.path_to_vocab_file = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
-
-        self.path_to_vocab_file_all = r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt"
-
-        text2kp = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file,
-            path_to_csv=self.path_to_csv,
-            path_to_vocab_file=self.path_to_vocab_file,
-            transform=ToTensor())
-        self.keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
-
-        text2kp = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file,
-            path_to_csv=self.path_to_csv,
-            path_to_vocab_file=self.path_to_vocab_file,
-            transform=ToTensor())
-        self.keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
-
-        text2kp = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file,
-            path_to_csv=self.path_to_csv,
-            path_to_vocab_file=self.path_to_vocab_file,
-            transform=ToTensor())
-        self.keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
-
         # save / load
         self.save_model = 1  # 0: model is not saved, 1: model is saved
-        self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-15_23-19\model.pt"  # if not empty use path, else create new folder, use only when documentation
-        # exists
+        # self.save_model_file_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models\2020-04-17_15-16\model.pt"  # if not empty use path, else create new folder, use only when documentation exists
+        self.save_model_file_path = r""  # if not empty use path, else create new folder, use only when documentation exists
         self.save_model_folder_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\saved_models"
         self.save_loss = []  # list to save loss results
         self.save_eval = []  # list to save evaluation results
-        self.save_epoch = 5  # save each x epoch
+        self.save_epoch = 1  # save each x epoch
 
+        # if no path to a model is set -> State.new, if a path ot a model exists, just keep updating
         if self.save_model_file_path == "":
             self.save_state = Save.new
         else:
@@ -128,9 +127,11 @@ class RunModel:
                               "reference": [],
                               "BLEU": [],
                               }
-        self.elapsed_time_sum = 0
+        self.elapsed_time_sum = 0.0
         self.idx_save = 0
-        self.load_dic = deepcopy(self.documentation)
+        self.time_run = time.time()  # start taking time to show on print, init variable
+        self.time_save = time.time()  # start taking time to show on save, init variable
+
         self.load_model = 0
         self.load_model_path = ""
         self.load_json_file_once = 1  # load json file once to get origin values
@@ -150,13 +151,23 @@ class RunModel:
         #  - Set decoder hidden size to max text length
         #  - Use vocab file for all three
         #  - Set decoder output dim to vocab size length
+        #  - This takes a lot of time, so do the steps above only if parameters in hparams file are missing!
 
-
-        unique_words = DataUtils().get_file_length(self.path_to_vocab_file)
+        unique_words = DataUtils().get_vocab_file_length(self.path_to_vocab_file_all)
         # TODO: get input_dim automatically?
         # TODO: crop max input_dim?
         self.input_dim = 100000  # length of source keypoints
         self.output_dim = unique_words + 1  # output_dim != max_length. max_length == hidden_size
+        # self.hidden = max sentence length
+
+
+        # run only if hparams not available
+        # print("Checking max lengths.")
+        # self.hidden_dim_enc, self.hidden_dim_dec, lengths = DataUtils().get_kp_text_max_lengths(self.data_loader_train, self.data_loader_train, self.data_loader_train)
+        # print("max length checking is done")
+        # with open('lengths.txt', 'w') as f:
+        #     for item in lengths:
+        #         f.write("%s\n" % item)
 
         self.model = self.init_model(self.input_dim, self.output_dim, self.hidden_size, self.embed_size,
                                      self.num_layers)
@@ -169,15 +180,15 @@ class RunModel:
 
         # print and train model
         print(self.model)
-        self.train_run(self.keypoints_loader, self.num_iteration)
+        self.train_run(self.data_loader_train, self.num_iteration)
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
-            self.evaluate_model_own()
+            self.evaluate_model_own(self.data_loader_train)
 
         # check if model should be evaluated or not (test set)
         if self.test_model:
-            self.evaluate_model_own()
+            self.evaluate_model_own(self.data_loader_test)
 
     def init_model(self, input_dim, output_dim, hidden_size, embed_size, num_layers):
         # create encoder-decoder model
@@ -197,28 +208,22 @@ class RunModel:
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         criterion = nn.L1Loss()
         total_loss_iterations = 0
-        it = iter(keypoints_loader)
 
-        start_time = time.time()  # used for tracking time when saving, refreshed each run
+        self.time_run = time.time()  # start taking time to show on print
+        self.time_save = time.time()  # start taking time to show on save
         t_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours  # remaining training time
 
-        # TODO shorten if/else
         if self.use_epochs:
             for idx in range(1, num_iteration + 1):
-                self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
-                                  start_time)
-                start_time = time.time()
+                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations)
 
         else:
             idx = 1
             while time.time() < t_end:
-                self.train_helper(criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations,
-                                  start_time, t_end)
-                start_time = time.time()
+                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations, t_end)
                 idx += 1
 
-    def train_helper(self, criterion, idx, it, keypoints_loader, model_optimizer, total_loss_iterations, start_time,
-                     t_end=0.0):
+    def train_helper(self, criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations, t_end=0.0):
         """
         main -> train_run -> train_helper -> train_model
         use this model to help with computing the loss and reduce train_run
@@ -230,6 +235,7 @@ class RunModel:
         :param total_loss_iterations:
         :return:
         """
+        it = iter(keypoints_loader)
         try:
             iterator_data = next(it)
         except StopIteration:  # reinitialize data loader if num_iteration > amount of data
@@ -242,7 +248,7 @@ class RunModel:
         total_loss_iterations += loss
 
         if idx % self.show_after_epochs == 0:
-            elapsed_time_s = int(time.time() - start_time)
+            elapsed_time_s = int(time.time() - self.time_save)
             self.elapsed_time_sum += elapsed_time_s
 
             remaining_time = int(t_end - time.time())
@@ -254,10 +260,11 @@ class RunModel:
 
             if t_end != 0.0:
                 print('Remaining time: %s' % str(datetime.timedelta(seconds=remaining_time)))
+            self.time_run = time.time()
 
         if idx % self.save_epoch == 0:
-            elapsed_time_s = int(time.time() - start_time)
-
+            elapsed_time_s = int(time.time() - self.time_save)
+            average_loss = total_loss_iterations / self.save_epoch
             print('Saving at epoch %d, average loss: %.2f' % (idx, average_loss))
 
             # refresh idx_t each time saving is callled
@@ -269,6 +276,7 @@ class RunModel:
 
             self.save_helper(self.save_state, Mode.train)
             self.idx_save = idx
+            self.time_save = time.time()
 
     def train_model(self, source_tensor, target_tensor, model_optimizer, criterion):
         """
@@ -296,15 +304,15 @@ class RunModel:
         # print(epoch_loss)
         return epoch_loss
 
-    def evaluate_model_own(self):
+    def evaluate_model_own(self, keypoints_loader):
         # evaluate (kommt da was sinnvolles raus?)
-        it = iter(self.keypoints_loader)
+        it = iter(keypoints_loader)
 
         for idx in range(1, self.num_iteration_eval + 1):
             try:
                 iterator_data = next(it)
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-                it = iter(self.keypoints_loader)
+                it = iter(keypoints_loader)
 
             with torch.no_grad():
                 in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
@@ -316,7 +324,7 @@ class RunModel:
                     for item in sublist:
                         flat_list.append(item)
 
-                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file))
+                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
                 hyp_str = " ".join(hypothesis)
 
                 print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
@@ -337,7 +345,8 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                reference = DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file))
+                reference = DataUtils().int2text(decoded_words,
+                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_train))
                 ref_str = " ".join(reference)
 
                 if len(hypothesis) >= 4 or len(reference) >= 4:

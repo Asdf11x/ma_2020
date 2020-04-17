@@ -47,7 +47,7 @@ class PrintDataset:
                 print(iterator_data[1].size())
                 print(iterator_data[1])
                 print("--- " * 10 + "\n")
-                # show out_tun as flat list
+                # show out_ten as flat list
                 # out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
                 # flat_list = []
                 # for sublist in out_ten.tolist():
@@ -66,7 +66,7 @@ class PrintDataset:
         while 1:
             try:
                 iterator_data = next(it)
-            except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+            except StopIteration:  # if StopIteration is raised, all data of a loader is used
                 break
             source_len = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1).size()[0]
             target_len = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1).size()[0]
