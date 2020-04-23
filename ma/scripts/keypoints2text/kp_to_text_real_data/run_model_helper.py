@@ -3,16 +3,13 @@ run_model_helper.py: contains methods not directly involved in training/evaluati
 """
 
 import os
-import re
-import sys
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 import time
 import torch
 from enum import Enum
 import json
-
+import shutil
 
 class Save(Enum):
     new = 0
@@ -25,6 +22,11 @@ class Mode(Enum):
 
 
 class Helper:
+
+    def __init__(self):
+        self.summary_name = "summary.txt"
+        self.run_info = "train_info.txt"
+        self.eval_info = "eval_info.txt"
 
     def save_model(self, model, save_model_folder_path, save_model_file_path, doc, state, mode):
         """
@@ -63,10 +65,16 @@ class Helper:
 
             # TODO save model representation correctly
             # TODO save evaluation correctly or find a nice way to save it
+            # Loss is not shown correctly
 
-            doc["model"] = repr(model)
+            shutil.copyfile("hparams.ini", current_folder / self.summary_name)
 
-            with open(current_folder / 'info.txt', 'w') as outfile:
+            with open(current_folder / self.summary_name, 'a+') as outfile:
+                outfile.write("\n")
+                outfile.write(repr(model))
+
+
+            with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc, outfile)
 
             return save_model_file_path
@@ -76,7 +84,7 @@ class Helper:
 
             current_folder = Path(save_model_file_path).parent
 
-            with open(current_folder / 'info.txt') as json_file:
+            with open(current_folder / self.run_info) as json_file:
                 doc_load = json.load(json_file)
 
             if mode == Mode.train:
@@ -84,7 +92,7 @@ class Helper:
                 doc_load["time_total_s"] = doc_load["time_total_s"] + doc["time_total_s"]
                 doc_load["time_total_readable"] = \
                     str(timedelta(seconds=(int(doc_load["time_total_s"]))))  # convert the time above
-
+                doc_load["loss"] = doc["loss"]
                 doc_load["loss_time_epoch"].append([float(doc["loss"][0]), doc_load["time_total_readable"],
                                                     doc_load["epochs_total"]])
 
@@ -100,11 +108,11 @@ class Helper:
 
             torch.save(model, save_model_file_path)
 
-            with open(current_folder / 'info.txt', 'w') as outfile:
+            with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc_load, outfile)
 
     def get_origin_json(self, save_model_file_path):
         current_folder = Path(save_model_file_path.parent)
 
-        with open(current_folder / 'info.txt') as json_file:
+        with open(current_folder / self.run_info) as json_file:
             return json.load(json_file)

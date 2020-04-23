@@ -26,6 +26,8 @@ from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, M
 import datetime
 import nltk
 from copy import deepcopy
+import configparser
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -33,9 +35,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class RunModel:
 
     def __init__(self):
+        config = configparser.ConfigParser()
+        config.read("hparams.ini")
+
         # TODO create settings file
         # model settings
-        self.teacher_forcing_ratio = 0.5
+        self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
         self.embed_size = 256  # vocab list size
         # TODO different hidden size for encoder and decoder, now: same size for both
         self.hidden_size = 512
@@ -43,18 +48,17 @@ class RunModel:
 
         # train settings
         self.use_epochs = 1  # 0: time, 1: epochs
-        self.num_iteration = 2
+        self.num_iteration = 10
         self.hours = 0
         self.minutes = 30
-        self.show_after_epochs = 5
+        self.show_after_epochs = 1
 
         # eval settings
-        self.evaluate_model = 1  # 0: model is not evaluated, 1: model is evaluated
+        self.evaluate_model = 0  # 0: model is not evaluated, 1: model is evaluated
         self.num_iteration_eval = 20
 
         # test settings
         self.test_model = 0  # 0: model is not tested, 1: model is tested
-
 
         # train
         self.path_to_numpy_file_train = r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy"
@@ -134,7 +138,6 @@ class RunModel:
 
         self.load_model = 0
         self.load_model_path = ""
-        self.load_json_file_once = 1  # load json file once to get origin values
         # get max lengths
         # TODO skip too long data?
         # source_dim, target_dim = get_src_trgt_sizes()
@@ -159,7 +162,6 @@ class RunModel:
         self.input_dim = 100000  # length of source keypoints
         self.output_dim = unique_words + 1  # output_dim != max_length. max_length == hidden_size
         # self.hidden = max sentence length
-
 
         # run only if hparams not available
         # print("Checking max lengths.")
@@ -207,7 +209,8 @@ class RunModel:
         self.model.train()
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         criterion = nn.L1Loss()
-        total_loss_iterations = 0
+        total_loss_iterations_run = 0
+        total_loss_iterations_save = 0
 
         self.time_run = time.time()  # start taking time to show on print
         self.time_save = time.time()  # start taking time to show on save
@@ -215,15 +218,18 @@ class RunModel:
 
         if self.use_epochs:
             for idx in range(1, num_iteration + 1):
-                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations)
+                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations_run,
+                                  total_loss_iterations_save)
 
         else:
             idx = 1
             while time.time() < t_end:
-                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations, t_end)
+                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations_run,
+                                  total_loss_iterations_save, t_end)
                 idx += 1
 
-    def train_helper(self, criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations, t_end=0.0):
+    def train_helper(self, criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations_run,
+                     total_loss_iterations_save, t_end=0.0):
         """
         main -> train_run -> train_helper -> train_model
         use this model to help with computing the loss and reduce train_run
@@ -245,15 +251,16 @@ class RunModel:
         target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
         print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
         loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
-        total_loss_iterations += loss
+        total_loss_iterations_run += loss
+        total_loss_iterations_save += loss
 
         if idx % self.show_after_epochs == 0:
             elapsed_time_s = int(time.time() - self.time_save)
             self.elapsed_time_sum += elapsed_time_s
 
             remaining_time = int(t_end - time.time())
-            average_loss = total_loss_iterations / self.show_after_epochs
-            total_loss_iterations = 0
+            average_loss = total_loss_iterations_run / self.show_after_epochs
+            total_loss_iterations_run = 0
 
             print('Epoch %d, average loss: %.2f, elapsed time: %s'
                   % (idx, average_loss, str(datetime.timedelta(seconds=self.elapsed_time_sum))))
@@ -264,9 +271,9 @@ class RunModel:
 
         if idx % self.save_epoch == 0:
             elapsed_time_s = int(time.time() - self.time_save)
-            average_loss = total_loss_iterations / self.save_epoch
+            average_loss = total_loss_iterations_save / self.save_epoch
             print('Saving at epoch %d, average loss: %.2f' % (idx, average_loss))
-
+            total_loss_iterations_save = 0
             # refresh idx_t each time saving is callled
             idx_t = idx - self.idx_save
 
