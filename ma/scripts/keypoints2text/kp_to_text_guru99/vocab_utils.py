@@ -17,7 +17,7 @@ features:
         vocab list
     - Vocab list does NOT contain: special characters & numbers
     - standard feature: create vocab list
-    - additional feature: transform text file to lowecase / no non-character words / dont't -> do not
+    - additional feature: transform text file to lowercase / no non-character words / dont't -> do not
         - set transform_file=1 in start parameters
 """
 
@@ -170,7 +170,7 @@ class VocabUtils:
 
     def main(self):
         self.create_folders()
-        # self.create_vocab_file()
+        self.create_vocab_file()
 
         if self.transform_file:
             self.transform_sentence_file()
@@ -198,8 +198,7 @@ class VocabUtils:
 
     def transform_sentence_file(self):
         """
-        create vocab list from a file
-            - excluding first element, since its the video ID
+        transform text file to lowercase / no non-character words / dont't -> do not
         :return:
         """
         all_sentences = []

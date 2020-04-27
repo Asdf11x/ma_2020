@@ -23,12 +23,14 @@ class PrintDataset:
             path_to_numpy_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy",
             path_to_csv=r"C:\Users\Asdf\Downloads\How2Sign_samples\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt",
             path_to_vocab_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\text_vocab\how2sign.test.id_vocab.txt",
+            kp_max_len=120000,
+            text_max_len=120,
             transform=ToTensor())
 
         keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)
         epochs = 5
         self.print_sample_data(keypoints_loader, epochs)
-        self.get_length_show_data(keypoints_loader)
+        # self.get_length_show_data(keypoints_loader)
 
     def print_sample_data(self, keypoints_loader, epochs):
         it = iter(keypoints_loader)

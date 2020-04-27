@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 import numbers
 from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+import json
 
 
 class TextKeypointsDataset(data.Dataset):
@@ -78,20 +79,16 @@ class TextKeypointsDataset(data.Dataset):
             # init dictionaries & write x, y values into dictionary
             for k in keys:
                 keys_x.extend(temp_df['people'][0][k][0::3])
+
                 keys_y.extend(temp_df['people'][0][k][1::3])
 
         # get x and y values and concat the values
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
         keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
 
-        # check if padding length is set, because the same dataloader is also used to find out the max length without padding
-        if self.kp_max_len != 0:
-            padding_length = int((self.kp_max_len - len(keys_x) * 2) / 2)
-        else:
-            padding_length = self.kp_max_len
-
+        padding_length = int(self.kp_max_len / 2)
         keys_x += [0.0] * (padding_length - len(keys_x))
-        keys_y += [0.0] * (padding_length - len(keys_x))
+        keys_y += [0.0] * (padding_length - len(keys_y))
 
         keypoints.append(keys_x + keys_y)
         keypoints = keypoints[0]  # remove one parenthesis
@@ -104,13 +101,12 @@ class TextKeypointsDataset(data.Dataset):
 
         # Set padding length (uncomment following 2 lines for padding)
         padding_length = self.text_max_len
-        sentence += ['0'] * (padding_length - len(sentence))
+        sentence += [0] * (padding_length - len(sentence))
 
         # transform to tensor via ToTensor TODO remove class and implement here?
         if self.transform:
             keypoints = self.transform(keypoints)
             sentence = self.transform(sentence)
-
         return keypoints, sentence
 
 

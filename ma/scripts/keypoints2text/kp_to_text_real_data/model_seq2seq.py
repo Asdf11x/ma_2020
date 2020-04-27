@@ -14,27 +14,24 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, embbed_dim, num_layers):
+    def __init__(self, hidden_dim, num_layers, hidden_dim_dec):
         super(Encoder, self).__init__()
 
         # set the encoder input dimesion , embbed dimesion, hidden dimesion, and number of layers
-        self.input_dim = input_dim
-        self.embbed_dim = embbed_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
+        self.hidden_dim_dec = hidden_dim_dec
 
-        # initialize the embedding layer with input and embbed dimention
-
-        # self.embedding = nn.Embedding(input_dim + 1, self.embbed_dim)
-
-        # intialize the GRU to take the input dimetion of embbed, and output dimention of hidden and
+        # intialize the GRU to take the input dimention of embbed, and output dimention of hidden and
         # set the number of gru layers
         # GRU doesnt need initialization:
         # https://github.com/bentrevett/pytorch-seq2seq/blob/master/3%20-%20Neural%20Machine%20Translation%20by%20Jointly%20Learning%20to%20Align%20and%20Translate.ipynb
         self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)
+        self.fc = nn.Linear(self.hidden_dim, self.hidden_dim_dec)
 
     def forward(self, src):
         outputs, hidden = self.gru(src.view(1, 1, -1))
+        hidden = torch.tanh(self.fc(hidden))
         return outputs, hidden  # outputs = hidden
 
 
