@@ -62,10 +62,7 @@ class RunModel:
 
         # train
         self.path_to_numpy_file_train = Path(config["train_paths"]["path_to_numpy_file_train"])
-        print(self.path_to_numpy_file_train)
-
         self.path_to_csv_train = Path(config["train_paths"]["path_to_csv_train"])
-        print(self.path_to_csv_train)
         self.path_to_vocab_file_train = Path(config["train_paths"]["path_to_vocab_file_train"])
 
         # val
@@ -139,7 +136,7 @@ class RunModel:
         #  - This takes a lot of time, so do the steps above only if parameters in hparams file are missing!
         # TODO: get input_dim automatically?
         # TODO: crop max input_dim?
-        self.input_dim = config["padding"]["input_dim"]  # length of source keypoints
+        # self.input_dim = config["padding"]["input_dim"]  # length of source keypoints
         self.output_dim = config["padding"]["output_dim"]  # output_dim != max_length. max_length == hidden_size
 
         # vocab size, amount of different unique words
@@ -165,19 +162,23 @@ class RunModel:
         self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=1, shuffle=True,
                                                              num_workers=0)
 
-        # text2kp_val = TextKeypointsDataset(
-        #     path_to_numpy_file=self.path_to_numpy_file_train,
-        #     path_to_csv=self.path_to_csv_train,
-        #     path_to_vocab_file=self.path_to_vocab_file_train,
-        #     transform=ToTensor())
-        # self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True, num_workers=0)
-        #
-        # text2kp_test = TextKeypointsDataset(
-        #     path_to_numpy_file=self.path_to_numpy_file_train,
-        #     path_to_csv=self.path_to_csv_train,
-        #     path_to_vocab_file=self.path_to_vocab_file_train,
-        #     transform=ToTensor())
-        # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
+        text2kp_val = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_val,
+            path_to_csv=self.path_to_csv_val,
+            path_to_vocab_file=self.path_to_vocab_file_val,
+            transform=ToTensor(),
+            kp_max_len=self.hidden_size_enc,
+            text_max_len=self.hidden_size_dec)
+        self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True, num_workers=0)
+
+        text2kp_test = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_test,
+            path_to_csv=self.path_to_csv_test,
+            path_to_vocab_file=self.path_to_vocab_file_test,
+            transform=ToTensor(),
+            kp_max_len=self.hidden_size_enc,
+            text_max_len=self.hidden_size_dec)
+        self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
 
         self.model = self.init_model(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
                                      self.num_layers)
