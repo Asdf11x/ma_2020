@@ -31,14 +31,18 @@ class NpyToSentence:
         df_text = pd.DataFrame(d)
 
         speaker = []
+        counter = 0
         for kp in df_kp["keypoints"]:
             vid_speaker = kp[:11] + kp[11:].split('-')[0]
             speaker.append(vid_speaker)
-
             for idx in range(len(df_text['keypoints'])):
                 if vid_speaker in df_text['keypoints'][idx]:
                     kp2sentence.append([kp, df_text['text'][idx]])
                     break
+
+            if counter % 250 == 0:
+                print("Folder %d of %d" % (counter, len(df_kp["keypoints"])))
+            counter += 1
         df_kp_text_train = pd.DataFrame(kp2sentence, columns=["keypoints", "text"])
         df_kp_text_train.to_csv(self.path_to_csv.name + "_2npy.txt", index=False)
 
