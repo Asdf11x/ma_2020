@@ -39,14 +39,16 @@ class VocabUtils:
         sorted_words = sorted(unique_words)
 
         # make sure the beginning is correct
+        sorted_words.remove("<pad>")
         sorted_words.remove("<unk>")
         sorted_words.remove("<sos>")
         sorted_words.remove("<eos>")
         sorted_words.remove(".")
-        sorted_words.insert(0, "<unk>")
-        sorted_words.insert(1, "<sos>")
-        sorted_words.insert(2, "<eos>")
-        sorted_words.insert(3, ".")
+        sorted_words.insert(0, "<pad>")
+        sorted_words.insert(1, "<unk>")
+        sorted_words.insert(2, "<sos>")
+        sorted_words.insert(3, "<eos>")
+        sorted_words.insert(4, ".")
 
         print("Unique words (incl. <unk>, <sos>, <eos>, . ): %d" % len(sorted_words))
 

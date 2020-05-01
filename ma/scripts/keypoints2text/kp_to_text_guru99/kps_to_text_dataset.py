@@ -13,7 +13,7 @@ from torch.utils import data
 import pandas as pd
 import numpy as np
 import numbers
-from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+
 
 class TextKeypointsDataset(data.Dataset):
     'Characterizes a dataset for PyTorch'

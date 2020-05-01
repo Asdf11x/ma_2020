@@ -26,12 +26,11 @@ class Encoder(nn.Module):
         # set the number of gru layers
         # GRU doesnt need initialization:
         # https://github.com/bentrevett/pytorch-seq2seq/blob/master/3%20-%20Neural%20Machine%20Translation%20by%20Jointly%20Learning%20to%20Align%20and%20Translate.ipynb
-        self.gru = nn.GRU(1, self.hidden_dim, num_layers=self.num_layers)
-        self.fc = nn.Linear(self.hidden_dim, self.hidden_dim_dec)
+        self.gru = nn.GRU(274, self.hidden_dim, num_layers=self.num_layers)
 
     def forward(self, src):
         outputs, hidden = self.gru(src.view(1, 1, -1))
-        hidden = torch.tanh(self.fc(hidden))
+        # hidden = torch.tanh(self.fc(hidden))
         return outputs, hidden  # outputs = hidden
 
 
@@ -74,11 +73,11 @@ class Seq2Seq(nn.Module):
         self.SOS_token = SOS_token
         self.EOS_token = EOS_token
 
-    def forward(self, source, target, teacher_forcing_ratio=0.5):
+    def forward(self, source_tensor, target_tensor, teacher_forcing_ratio=0.5):
 
-        input_length = source.size(0)  # get the input length (number of words in sentence)
-        batch_size = target.shape[1]
-        target_length = target.shape[0]
+        input_length = source_tensor.size(0)  # get the input length (number of words in sentence)
+        batch_size = target_tensor.shape[1]
+        target_length = target_tensor.shape[0]
         vocab_size = self.decoder.output_dim
 
         # initialize a variable to hold the predicted outputs
@@ -88,7 +87,7 @@ class Seq2Seq(nn.Module):
         for i in range(input_length):
             # encoder_output = encoder_hidden = Encoder.forward.outputs/hidden
             # .size() => (hidden_size = 512) => [1, 1, 512]
-            encoder_output, encoder_hidden = self.encoder(source[i])  # encoder_output = encoder_hidden (last layer)
+            encoder_output, encoder_hidden = self.encoder(source_tensor[i])  # encoder_output = encoder_hidden (last layer)
 
         # use the encoder’s hidden layer as the decoder hidden (context vector)
         decoder_hidden = encoder_hidden.to(device)
@@ -105,7 +104,7 @@ class Seq2Seq(nn.Module):
             outputs[t] = decoder_output
             teacher_force = random.random() < teacher_forcing_ratio
             topv, topi = decoder_output.topk(1)
-            decoder_input = (target[t] if teacher_force else topi)
+            decoder_input = (target_tensor[t] if teacher_force else topi)
             if (teacher_force == False and decoder_input.item() == self.EOS_token):
                 break
         return outputs

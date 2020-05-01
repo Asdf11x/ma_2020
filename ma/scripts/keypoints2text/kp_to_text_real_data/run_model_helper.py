@@ -67,7 +67,7 @@ class Helper:
             # TODO save evaluation correctly or find a nice way to save it
             # Loss is not shown correctly
 
-            shutil.copyfile("hparams.ini", current_folder / self.summary_name)
+            shutil.copyfile("hparams.json", current_folder / self.summary_name)
 
             with open(current_folder / self.summary_name, 'a+') as outfile:
                 outfile.write("\n")

@@ -26,7 +26,6 @@ import re
 import sys
 import time
 from pathlib import Path
-
 import spacy
 from spacy.tokenizer import Tokenizer
 from spacy.util import compile_prefix_regex, compile_suffix_regex
@@ -320,7 +319,7 @@ if __name__ == '__main__':
 
     # transform file?
     # 0:no, 1:yes
-    transform_file = 0
+    transform_file = 1
     if len(sys.argv) > 2:
         transform_file = sys.argv[2]
 

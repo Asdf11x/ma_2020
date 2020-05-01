@@ -8,9 +8,10 @@ from pathlib import Path
 
 class NpyToSentence:
 
-    def __init__(self, path_to_numpy_file, path_to_csv):
+    def __init__(self, path_to_numpy_file, path_to_csv, path_to_target):
         self.path_to_numpy_file = Path(path_to_numpy_file)
         self.path_to_csv = Path(path_to_csv)
+        self.path_to_target = Path(path_to_target)
         old = np.load
         np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
 
@@ -44,7 +45,7 @@ class NpyToSentence:
                 print("Folder %d of %d" % (counter, len(df_kp["keypoints"])))
             counter += 1
         df_kp_text_train = pd.DataFrame(kp2sentence, columns=["keypoints", "text"])
-        df_kp_text_train.to_csv(self.path_to_csv.name + "_2npy.txt", index=False)
+        df_kp_text_train.to_csv(self.path_to_target / str(str(self.path_to_csv.name) + "_2npy.txt"), index=False)
 
 
 if __name__ == '__main__':
@@ -62,5 +63,12 @@ if __name__ == '__main__':
         print("Set path to transformed file containing sentences")
         sys.exit()
 
-    npy = NpyToSentence(path_to_numpy_file, path_to_csv)
+    # target folder
+    if len(sys.argv) > 3:
+        path_to_target = sys.argv[3]
+    else:
+        print("Set path to target folder")
+        sys.exit()
+
+    npy = NpyToSentence(path_to_numpy_file, path_to_csv, path_to_target)
     npy.main()

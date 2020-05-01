@@ -21,6 +21,7 @@ import os
 import time
 from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
+from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
 from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
 import datetime
@@ -54,7 +55,8 @@ class RunModel:
         self.show_after_epochs = config["train_settings"]["show_after_epochs"]
 
         # eval settings
-        self.evaluate_model = config["eval_settings"]["evaluate_model"]  # 0: model is not evaluated, 1: model is evaluated
+        self.evaluate_model = config["eval_settings"][
+            "evaluate_model"]  # 0: model is not evaluated, 1: model is evaluated
         self.num_iteration_eval = config["eval_settings"]["num_iteration_eval"]
 
         # test settings
@@ -78,8 +80,6 @@ class RunModel:
         # vocab file, containing unique words for all (train, val & test)
         self.path_to_vocab_file_all = config["vocab_file"]["path_to_vocab_file_all"]
 
-
-
         # set tokens
         self.PAD_token = 0
         self.UNK_token = 1
@@ -88,7 +88,8 @@ class RunModel:
 
         # save / load
         self.save_model = config["save_load"]["save_model"]  # 0: model is not saved, 1: model is saved
-        self.save_model_file_path = config["save_load"]["save_model_file_path"]  # if not empty use path, else create new folder, use only when documentation exists
+        self.save_model_file_path = config["save_load"][
+            "save_model_file_path"]  # if not empty use path, else create new folder, use only when documentation exists
         self.save_model_folder_path = config["save_load"]["save_model_folder_path"]
         self.save_epoch = config["save_load"]["save_epoch"]  # save each x epoch
         self.save_loss = []  # init list to save loss results
@@ -146,7 +147,8 @@ class RunModel:
         # max length of source keypoints and target sentence
         if self.hidden_size_enc == 0 or self.hidden_size_dec == 0:
             print("Searching for source and target max length")
-            self.hidden_size_enc, self.hidden_size_dec, lengths = DataUtils().get_kp_text_max_lengths(self.data_loader_train, self.data_loader_train, self.data_loader_train)
+            self.hidden_size_enc, self.hidden_size_dec, lengths = DataUtils().get_kp_text_max_lengths(
+                self.data_loader_train, self.data_loader_train, self.data_loader_train)
             with open('lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
@@ -164,10 +166,9 @@ class RunModel:
         #     path_to_numpy_file=self.path_to_numpy_file_val,
         #     path_to_csv=self.path_to_csv_val,
         #     path_to_vocab_file=self.path_to_vocab_file_val,
-        #     transform=ToTensor(),
-        #     kp_max_len=self.hidden_size_enc,
-        #     text_max_len=self.hidden_size_dec)
+        #     transform=ToTensor())
         # self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True, num_workers=0)
+
         #
         # text2kp_test = TextKeypointsDataset(
         #     path_to_numpy_file=self.path_to_numpy_file_test,
@@ -178,8 +179,16 @@ class RunModel:
         #     text_max_len=self.hidden_size_dec)
         # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
 
-        self.model = self.init_model(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
-                                     self.num_layers)
+        # model options: "basic", "attn"
+
+        model = "attn"
+        if model == "basic":
+            self.model = self.init_model(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
+                                         self.num_layers)
+        elif model == "attn":
+            self.model = self.init_model_attn(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
+                                         self.num_layers)
+
 
     def main(self):
         # check if model should be loaded or not. Loads model if model_file_path is set
@@ -206,6 +215,13 @@ class RunModel:
         model = Seq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
         return model
 
+    def init_model_attn(self, output_dim, hidden_dim_enc, hidden_dim_dec, embed_size, num_layers):
+        # create encoder-decoder model with attention
+        encoder = AttnEncoder(hidden_dim_enc, num_layers, hidden_dim_dec)
+        decoder = AttnDecoderRNN(output_dim, hidden_dim_dec)
+        model = AttnSeq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
+        return model
+
     def train_run(self, keypoints_loader, num_iteration):
         """
         the outer most train method, the whole train procesdure is started here
@@ -215,7 +231,8 @@ class RunModel:
         """
         self.model.train()
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
-        criterion = nn.L1Loss()
+        # criterion = nn.L1Loss()
+        criterion = nn.NLLLoss()
         total_loss_iterations_run = 0
         total_loss_iterations_save = 0
 
@@ -254,9 +271,9 @@ class RunModel:
         except StopIteration:  # reinitialize data loader if num_iteration > amount of data
             it = iter(keypoints_loader)
 
-        source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)  # TODO remove [:20]
+        source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274)
         target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
-        print("source_ten.size: %d, target_ten.size: %d" % (source_ten.size()[0], target_ten.size()[0]))
+        # print("source_ten.size: %s, target_ten.size: %d" % (str(source_ten.size()), target_ten.size()[0]))
         loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
         total_loss_iterations_run += loss
         total_loss_iterations_save += loss
@@ -309,7 +326,7 @@ class RunModel:
 
         # calculate the loss from a predicted sentence with the expected result
         for ot in range(num_iter):  # creating user warning of tensor
-            loss += criterion(output[ot], target_tensor[ot].view(1, -1))
+            loss += criterion(output[ot], target_tensor[ot])
 
         loss.backward()
         model_optimizer.step()
@@ -329,7 +346,7 @@ class RunModel:
                 it = iter(keypoints_loader)
 
             with torch.no_grad():
-                in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1)
+                in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274)
                 out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
                 print("---" * 10)
 
@@ -351,9 +368,7 @@ class RunModel:
                 print("---" * 10)
                 for ot in range(output.size(0)):
                     topv, topi = output[ot].topk(1)
-
                     if topi[0].item() == self.EOS_token:
-                        print("FOUND EOS STOP")
                         decoded_words.append('<eos>')
                         break
                     else:

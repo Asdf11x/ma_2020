@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from keypoints2text.kp_to_text_guru99.kps_to_text_dataset import TextKeypointsDataset
 from keypoints2text.kp_to_text_guru99.kps_to_text_dataset import ToTensor
-from keypoints2text.kp_to_text_guru99.data_utils import DataUtils
+from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

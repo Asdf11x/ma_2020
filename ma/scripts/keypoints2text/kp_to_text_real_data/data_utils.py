@@ -44,7 +44,7 @@ class DataUtils:
             if element in int2word:
                 result.append(int2word[element])
             else:
-                result.append("<unk>")
+                result.append(str(element))
         return result
 
     def text2index(self, text_array, word2int):

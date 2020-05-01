@@ -70,14 +70,17 @@ class TextKeypointsDataset(data.Dataset):
         subdirectory = self.saved_column_kp[index]
 
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
-        keys_x = []
-        keys_y = []
+        keys_per_folder = []
+
         for file in self.all_files[subdirectory]:
             temp_df = self.all_files[subdirectory][file]
             # init dictionaries & write x, y values into dictionary
+            keys_x = []
+            keys_y = []
             for k in keys:
                 keys_x.extend(temp_df['people'][0][k][0::3])
                 keys_y.extend(temp_df['people'][0][k][1::3])
+            keys_per_folder.append(keys_x + keys_y)
 
         # get x and y values and concat the values
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
@@ -99,12 +102,14 @@ class TextKeypointsDataset(data.Dataset):
         # Set padding length (uncomment following 2 lines for padding)
         padding_length = self.text_max_len
         sentence += [0] * (padding_length - len(sentence))
-
         # transform to tensor via ToTensor TODO remove class and implement here?
         if self.transform:
             keypoints = self.transform(keypoints)
+            keys_per_folder = self.transform(keys_per_folder)
             sentence = self.transform(sentence)
-        return keypoints, sentence
+        print("here")
+        print(keys_per_folder.size())
+        return keys_per_folder, sentence
 
 
 class ToTensor(object):
