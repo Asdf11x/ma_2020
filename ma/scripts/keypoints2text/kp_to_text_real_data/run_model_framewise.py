@@ -22,6 +22,7 @@ import time
 from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
 from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
+from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
 from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
 import datetime
@@ -179,7 +180,7 @@ class RunModel:
         #     text_max_len=self.hidden_size_dec)
         # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
 
-        # model options: "basic", "attn"
+        # model options: "basic", "attn", "trans"
 
         model = "attn"
         if model == "basic":
@@ -188,6 +189,10 @@ class RunModel:
         elif model == "attn":
             self.model = self.init_model_attn(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
                                          self.num_layers)
+        elif model == "trans":
+            self.model = self.init_model_trans(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
+                                         self.num_layers)
+
 
 
     def main(self):
@@ -220,6 +225,16 @@ class RunModel:
         encoder = AttnEncoder(hidden_dim_enc, num_layers, hidden_dim_dec)
         decoder = AttnDecoderRNN(output_dim, hidden_dim_dec)
         model = AttnSeq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
+        return model
+
+    def init_model_trans(self, output_dim, hidden_dim_enc, hidden_dim_dec, embed_size, num_layers):
+        ntokens = output_dim  # the size of vocabulary
+        emsize = 200  # embedding dimension
+        nhid = 200  # the dimension of the feedforward network model in nn.TransformerEncoder
+        nlayers = 2  # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+        nhead = 2  # the number of heads in the multiheadattention models
+        dropout = 0.2  # the dropout value
+        model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
         return model
 
     def train_run(self, keypoints_loader, num_iteration):
