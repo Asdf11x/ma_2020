@@ -70,25 +70,22 @@ class TextKeypointsDataset(data.Dataset):
         subdirectory = self.saved_column_kp[index]
 
         keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
-        keys_per_folder = []
-
+        keys_x = []
+        keys_y = []
         for file in self.all_files[subdirectory]:
             temp_df = self.all_files[subdirectory][file]
             # init dictionaries & write x, y values into dictionary
-            keys_x = []
-            keys_y = []
             for k in keys:
                 keys_x.extend(temp_df['people'][0][k][0::3])
                 keys_y.extend(temp_df['people'][0][k][1::3])
-            keys_per_folder.append(keys_x + keys_y)
 
         # get x and y values and concat the values
         keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
         keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
 
-        padding_length = int(self.kp_max_len / 2)
-        keys_x += [0.0] * (padding_length - len(keys_x))
-        keys_y += [0.0] * (padding_length - len(keys_y))
+        # padding_length = int(self.kp_max_len / 2)
+        # keys_x += [0.0] * (padding_length - len(keys_x))
+        # keys_y += [0.0] * (padding_length - len(keys_y))
 
         keypoints.append(keys_x + keys_y)
         keypoints = keypoints[0]  # remove one parenthesis
@@ -102,12 +99,12 @@ class TextKeypointsDataset(data.Dataset):
         # Set padding length (uncomment following 2 lines for padding)
         padding_length = self.text_max_len
         sentence += [0] * (padding_length - len(sentence))
+
         # transform to tensor via ToTensor TODO remove class and implement here?
         if self.transform:
             keypoints = self.transform(keypoints)
-            keys_per_folder = self.transform(keys_per_folder)
             sentence = self.transform(sentence)
-        return keys_per_folder, sentence
+        return keypoints, sentence
 
 
 class ToTensor(object):

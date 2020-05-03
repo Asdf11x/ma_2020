@@ -14,13 +14,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Encoder(nn.Module):
-    def __init__(self, hidden_dim, num_layers, hidden_dim_dec):
+    def __init__(self, hidden_dim, num_layers):
         super(Encoder, self).__init__()
 
         # set the encoder input dimesion , embbed dimesion, hidden dimesion, and number of layers
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.hidden_dim_dec = hidden_dim_dec
 
         # intialize the GRU to take the input dimention of embbed, and output dimention of hidden and
         # set the number of gru layers

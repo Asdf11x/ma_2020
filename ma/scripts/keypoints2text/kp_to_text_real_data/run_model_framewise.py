@@ -19,7 +19,7 @@ import torch.utils
 import torch.utils.data
 import os
 import time
-from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
+from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset, ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
 from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
 from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
@@ -44,8 +44,7 @@ class RunModel:
         # model settings
         self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
         self.embed_size = config["model_settings"]["embed_size"]  # vocab list size
-        self.hidden_size_enc = config["model_settings"]["hidden_size_enc"]
-        self.hidden_size_dec = config["model_settings"]["hidden_size_dec"]
+        self.hidden_size = config["model_settings"]["hidden_size"]
         self.num_layers = config["model_settings"]["num_layers"]
 
         # train settings
@@ -53,7 +52,7 @@ class RunModel:
         self.num_iteration = config["train_settings"]["num_iteration"]
         self.hours = config["train_settings"]["hours"]
         self.minutes = config["train_settings"]["minutes"]
-        self.show_after_epochs = config["train_settings"]["show_after_epochs"]
+        self.show_every = config["train_settings"]["show_every"]
 
         # eval settings
         self.evaluate_model = config["eval_settings"][
@@ -92,7 +91,7 @@ class RunModel:
         self.save_model_file_path = config["save_load"][
             "save_model_file_path"]  # if not empty use path, else create new folder, use only when documentation exists
         self.save_model_folder_path = config["save_load"]["save_model_folder_path"]
-        self.save_epoch = config["save_load"]["save_epoch"]  # save each x epoch
+        self.save_every = config["save_load"]["save_every"]  # save each x epoch
         self.save_loss = []  # init list to save loss results
         self.save_eval = []  # init list to save evaluation results
         # if no path to a model is set -> State.new, if a path ot a model exists, just keep updating
@@ -111,11 +110,6 @@ class RunModel:
                               "reference": [],
                               "BLEU": [],
                               }
-
-        self.elapsed_time_sum = 0.0  # init time
-        self.idx_save = 0  # init saving epochs
-        self.time_run = time.time()  # init, start taking time to show on print, init variable
-        self.time_save = time.time()  # init, start taking time to show on save, init variable
 
         self.load_model = config["save_load"]["load_model"]
         self.load_model_path = config["save_load"]["load_model_path"]
@@ -146,10 +140,14 @@ class RunModel:
             self.output_dim = DataUtils().get_vocab_file_length(self.path_to_vocab_file_all)
 
         # max length of source keypoints and target sentence
-        if self.hidden_size_enc == 0 or self.hidden_size_dec == 0:
+        if self.hidden_size == 0:
             print("Searching for source and target max length")
-            self.hidden_size_enc, self.hidden_size_dec, lengths = DataUtils().get_kp_text_max_lengths(
+            max_len_source, max_len_target, lengths = DataUtils().get_kp_text_max_lengths(
                 self.data_loader_train, self.data_loader_train, self.data_loader_train)
+            if max_len_source > max_len_target:
+                self.hidden_size = max_len_source
+            else:
+                self.hidden_size = max_len_target
             with open('lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
@@ -184,16 +182,14 @@ class RunModel:
 
         model = "attn"
         if model == "basic":
-            self.model = self.init_model(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
+            self.model = self.init_model(self.output_dim, self.hidden_size, self.embed_size,
                                          self.num_layers)
         elif model == "attn":
-            self.model = self.init_model_attn(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
-                                         self.num_layers)
+            self.model = self.init_model_attn(self.output_dim, self.hidden_size, self.embed_size,
+                                              self.num_layers)
         elif model == "trans":
-            self.model = self.init_model_trans(self.output_dim, self.hidden_size_enc, self.hidden_size_dec, self.embed_size,
-                                         self.num_layers)
-
-
+            self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.embed_size,
+                                               self.num_layers)
 
     def main(self):
         # check if model should be loaded or not. Loads model if model_file_path is set
@@ -213,21 +209,21 @@ class RunModel:
         if self.test_model:
             self.evaluate_model_own(self.data_loader_test)
 
-    def init_model(self, output_dim, hidden_dim_enc, hidden_dim_dec, embed_size, num_layers):
+    def init_model(self, output_dim, hidden_dim, embed_size, num_layers):
         # create encoder-decoder model
-        encoder = Encoder(hidden_dim_enc, num_layers, hidden_dim_dec)
-        decoder = Decoder(output_dim, hidden_dim_dec, embed_size, num_layers)
+        encoder = Encoder(hidden_dim, num_layers)
+        decoder = Decoder(output_dim, hidden_dim, embed_size, num_layers)
         model = Seq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
         return model
 
-    def init_model_attn(self, output_dim, hidden_dim_enc, hidden_dim_dec, embed_size, num_layers):
+    def init_model_attn(self, output_dim, hidden_dim, embed_size, num_layers):
         # create encoder-decoder model with attention
-        encoder = AttnEncoder(hidden_dim_enc, num_layers, hidden_dim_dec)
-        decoder = AttnDecoderRNN(output_dim, hidden_dim_dec)
+        encoder = AttnEncoder(hidden_dim, num_layers)
+        decoder = AttnDecoderRNN(output_dim, hidden_dim)
         model = AttnSeq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
         return model
 
-    def init_model_trans(self, output_dim, hidden_dim_enc, hidden_dim_dec, embed_size, num_layers):
+    def init_model_trans(self, output_dim, hidden_dim, embed_size, num_layers):
         ntokens = output_dim  # the size of vocabulary
         emsize = 200  # embedding dimension
         nhid = 200  # the dimension of the feedforward network model in nn.TransformerEncoder
@@ -246,83 +242,75 @@ class RunModel:
         """
         self.model.train()
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
-        # criterion = nn.L1Loss()
         criterion = nn.NLLLoss()
-        total_loss_iterations_run = 0
-        total_loss_iterations_save = 0
 
-        self.time_run = time.time()  # start taking time to show on print
-        self.time_save = time.time()  # start taking time to show on save
-        t_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours  # remaining training time
+        time_run = time.time()  # start taking time to show on print
+        time_save = time.time()  # start taking time to show on save
+        time_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours  # remaining training time
 
-        if self.use_epochs:
-            for idx in range(1, num_iteration + 1):
-                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations_run,
-                                  total_loss_iterations_save)
-
-        else:
-            idx = 1
-            while time.time() < t_end:
-                self.train_helper(criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations_run,
-                                  total_loss_iterations_save, t_end)
-                idx += 1
-
-    def train_helper(self, criterion, idx, keypoints_loader, model_optimizer, total_loss_iterations_run,
-                     total_loss_iterations_save, t_end=0.0):
-        """
-        main -> train_run -> train_helper -> train_model
-        use this model to help with computing the loss and reduce train_run
-        :param criterion:
-        :param idx:
-        :param it:
-        :param keypoints_loader:
-        :param model_optimizer:
-        :param total_loss_iterations:
-        :return:
-        """
+        total_loss_run = 0
+        total_loss_save = 0
+        idx_epoch = 1
+        idx_epoch_save = 0
         it = iter(keypoints_loader)
-        try:
-            iterator_data = next(it)
-        except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-            it = iter(keypoints_loader)
 
-        source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274)
-        target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
-        # print("source_ten.size: %s, target_ten.size: %d" % (str(source_ten.size()), target_ten.size()[0]))
-        loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
-        total_loss_iterations_run += loss
-        total_loss_iterations_save += loss
+        if self.use_epochs == 1:
+            remaining = 1
+            end = num_iteration
+            time_end = 0
+        else:
+            remaining = time.time()
+            end = time_end
 
-        if idx % self.show_after_epochs == 0:
-            elapsed_time_s = int(time.time() - self.time_save)
-            self.elapsed_time_sum += elapsed_time_s
+        while remaining <= end:
+            try:
+                iterator_data = next(it)
+            except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+                it = iter(keypoints_loader)
 
-            remaining_time = int(t_end - time.time())
-            average_loss = total_loss_iterations_run / self.show_after_epochs
-            total_loss_iterations_run = 0
+            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274)
+            target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
 
-            print('Epoch %d, average loss: %.2f, elapsed time: %s'
-                  % (idx, average_loss, str(datetime.timedelta(seconds=self.elapsed_time_sum))))
+            loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
+            total_loss_run += loss
+            total_loss_save += loss
 
-            if t_end != 0.0:
-                print('Remaining time: %s' % str(datetime.timedelta(seconds=remaining_time)))
-            self.time_run = time.time()
+            if idx_epoch % self.show_every == 0:
+                elapsed_time_s = time.time() - time_run
+                average_loss = total_loss_run / self.show_every
+                total_loss_run = 0
 
-        if idx % self.save_epoch == 0:
-            elapsed_time_s = int(time.time() - self.time_save)
-            average_loss = total_loss_iterations_save / self.save_epoch
-            print('Saving at epoch %d, average loss: %.2f' % (idx, average_loss))
-            total_loss_iterations_save = 0
-            # refresh idx_t each time saving is callled
-            idx_t = idx - self.idx_save
+                print('Epoch %d, average loss: %.2f, elapsed time: %s'
+                      % (idx_epoch, average_loss, str(datetime.timedelta(seconds=int(elapsed_time_s)))))
 
-            self.documentation["epochs_total"] = idx_t
-            self.documentation["time_total_s"] = elapsed_time_s
-            self.documentation["loss"] = [round(average_loss, 2)]
+                remaining_time = int(time_end - time.time())
+                if time_end != 0.0:
+                    print('Remaining time: %s' % str(datetime.timedelta(seconds=remaining_time)))
 
-            self.save_helper(self.save_state, Mode.train)
-            self.idx_save = idx
-            self.time_save = time.time()
+            if idx_epoch % self.save_every == 0:
+                elapsed_time_s = time.time() - time_save
+                average_loss = total_loss_save / self.save_every
+                total_loss_save = 0
+
+                print('Saving at epoch %d, average loss: %.2f' % (idx_epoch, average_loss))
+
+                # refresh idx_epoch_save each time saving is called
+                idx_epoch_save = idx_epoch - idx_epoch_save
+
+                self.documentation["epochs_total"] = idx_epoch_save
+                self.documentation["time_total_s"] = elapsed_time_s
+                self.documentation["loss"] = [round(average_loss, 2)]
+
+                idx_epoch_save = idx_epoch
+                time_save = time.time()
+                self.save_helper(self.save_state, Mode.train)
+
+            if self.use_epochs == 1:
+                remaining += 1
+            else:
+                remaining = time.time()
+
+            idx_epoch += 1
 
     def train_model(self, source_tensor, target_tensor, model_optimizer, criterion):
         """
@@ -346,8 +334,6 @@ class RunModel:
         loss.backward()
         model_optimizer.step()
         epoch_loss = loss.item() / num_iter
-
-        # print(epoch_loss)
         return epoch_loss
 
     def evaluate_model_own(self, keypoints_loader):
@@ -370,7 +356,7 @@ class RunModel:
                     for item in sublist:
                         flat_list.append(item)
 
-                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))[:-1]
                 hyp_str = " ".join(hypothesis)
 
                 print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
@@ -389,8 +375,11 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                reference = DataUtils().int2text(decoded_words,
-                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                reference = DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+
+                if "<eos>" in reference[-1]:
+                    reference = reference[:-1]
+
                 ref_str = " ".join(reference)
 
                 if len(hypothesis) >= 4 or len(reference) >= 4:

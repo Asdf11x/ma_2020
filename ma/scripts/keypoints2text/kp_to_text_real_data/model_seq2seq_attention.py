@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class AttnEncoder(nn.Module):
-    def __init__(self, hidden_dim, embbed_dim, num_layers):
+    def __init__(self, hidden_dim, num_layers):
         super(AttnEncoder, self).__init__()
 
         # set the encoder input dimesion , embbed dimesion, hidden dimesion, and number of layers
@@ -35,7 +35,7 @@ class AttnEncoder(nn.Module):
 
 
 class AttnDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_dim, dropout_p=0.1, max_length=350):
+    def __init__(self, output_dim, hidden_size, dropout_p=0.1, max_length=350):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_dim = output_dim
@@ -124,7 +124,7 @@ class AttnSeq2Seq(nn.Module):
         # print("encoder output size")
         # print(encoder_outputs.size())
 
-        decoder_hidden = encoder_hidden[-1].view(1, 1, -1)
+        decoder_hidden = encoder_hidden
 
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
         if use_teacher_forcing:
