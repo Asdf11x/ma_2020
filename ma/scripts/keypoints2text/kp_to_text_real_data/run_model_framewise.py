@@ -280,7 +280,7 @@ class RunModel:
                 average_loss = total_loss_run / self.show_every
                 total_loss_run = 0
 
-                print('Epoch %d, average loss: %.2f, elapsed time: %s'
+                print('Epoch %d, average NLLLoss: %.2f, elapsed time: %s'
                       % (idx_epoch, average_loss, str(datetime.timedelta(seconds=int(elapsed_time_s)))))
 
                 remaining_time = int(time_end - time.time())
@@ -360,12 +360,9 @@ class RunModel:
                 hyp_str = " ".join(hypothesis)
 
                 print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
-                # print("in_ten: %s, out_ten: %s" % (str(in_ten), str(out_ten)))
                 decoded_words = []
 
                 output = self.model(in_ten, out_ten)
-                # print("output.size: %d" % output.size(0))
-                # print(output)
                 print("---" * 10)
                 for ot in range(output.size(0)):
                     topv, topi = output[ot].topk(1)

@@ -57,14 +57,11 @@ class Helper:
             current_folder = save_model_folder_path / timestr
 
             save_model_file_path = current_folder / "model.pt"
-            # TODO uncommment to save model (testing)
-            # torch.save(model, save_model_file_path)
+            torch.save(model, save_model_file_path)
 
             doc["loss_time_epoch"].append([float(doc["loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
                                            doc["epochs_total"]])
 
-            # TODO save model representation correctly
-            # TODO save evaluation correctly or find a nice way to save it
             # Loss is not shown correctly
 
             shutil.copyfile("hparams.json", current_folder / self.summary_name)
