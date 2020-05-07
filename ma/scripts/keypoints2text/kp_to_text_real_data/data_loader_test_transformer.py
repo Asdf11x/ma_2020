@@ -5,13 +5,16 @@ kps_to_text_test.py: Test and print the computed data from kps_to_text_dataset.p
 - use .csv file (containing the connection between text <-> keypoint folder)
 """
 
-from keypoints2text.kp_to_text_real_data.data_loader_transformer import TextKeypointsDataset
-from keypoints2text.kp_to_text_real_data.data_loader_transformer import ToTensor
 import torch
 import torch.utils
 import torch.utils.data
 from matplotlib import pyplot as plt
-
+try:
+    from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset
+    from keypoints2text.kp_to_text_real_data.data_loader_framewise import ToTensor
+except ImportError:  # server uses different imports than local
+    from data_loader_framewise import TextKeypointsDataset
+    from data_loader_framewise import ToTensor
 
 class PrintDataset:
 

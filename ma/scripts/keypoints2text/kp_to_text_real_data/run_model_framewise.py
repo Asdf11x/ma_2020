@@ -19,13 +19,6 @@ import torch.utils
 import torch.utils.data
 import os
 import time
-from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset, ToTensor
-from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
-from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
-from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
-from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
-from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
-# from torch.utils.tensorboard import SummaryWriter
 from tensorboardX import SummaryWriter
 import datetime
 from nltk.translate.bleu_score import sentence_bleu
@@ -33,6 +26,24 @@ from nltk.translate.meteor_score import single_meteor_score
 from rouge import Rouge
 from pathlib import Path
 import json
+
+try:
+    from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset, ToTensor
+    from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
+    from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
+    from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
+    from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+    from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
+except ImportError:  # server uses different imports than local
+    from data_loader_framewise import TextKeypointsDataset, ToTensor
+    from model_seq2seq import Encoder, Decoder, Seq2Seq
+    from model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
+    from model_transformer import TransformerModel
+    from data_utils import DataUtils
+    from run_model_helper import Helper, Save, Mode
+
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

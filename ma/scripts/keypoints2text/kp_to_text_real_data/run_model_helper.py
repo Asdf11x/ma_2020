@@ -12,7 +12,10 @@ import json
 import shutil
 from matplotlib import pyplot as plt
 import numpy as np
-from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+try:
+    from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+except ImportError:  # server uses different imports than local
+    from data_utils import DataUtils
 
 
 class Save(Enum):

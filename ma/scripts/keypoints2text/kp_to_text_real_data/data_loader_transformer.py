@@ -13,7 +13,10 @@ from torch.utils import data
 import pandas as pd
 import numpy as np
 import numbers
-from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+try:
+    from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+except ImportError:  # server uses different imports than local
+    from data_utils import DataUtils
 
 
 class TextKeypointsDataset(data.Dataset):
