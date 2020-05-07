@@ -25,8 +25,12 @@ from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEnco
 from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
 from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
+from torch.utils.tensorboard import SummaryWriter
 import datetime
 import nltk
+from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.meteor_score import single_meteor_score
+from rouge import Rouge
 from pathlib import Path
 import json
 
@@ -104,11 +108,12 @@ class RunModel:
         self.documentation = {"epochs_total": 0,
                               "time_total_s": 0,
                               "time_total_readable": "",
-                              "loss": [],
-                              "loss_time_epoch": [],
+                              "train_loss": [],
+                              "val_loss": [],
+                              "tloss_vloss_time_epoch": [],
                               "hypothesis": [],
                               "reference": [],
-                              "BLEU": [],
+                              "Epoch_BLEU1-4_METEOR_ROUGE": [],
                               }
 
         self.load_model = config["save_load"]["load_model"]
@@ -135,6 +140,15 @@ class RunModel:
         # self.input_dim = config["padding"]["input_dim"]  # length of source keypoints
         self.output_dim = config["padding"]["output_dim"]  # output_dim != max_length. max_length == hidden_size
 
+        # Dataloaders for train, val & test
+        text2kp_train = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_train,
+            path_to_csv=self.path_to_csv_train,
+            path_to_vocab_file=self.path_to_vocab_file_train,
+            transform=ToTensor())
+        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=1, shuffle=True,
+                                                             num_workers=0)
+
         # vocab size, amount of different unique words
         if self.output_dim == 0:
             self.output_dim = DataUtils().get_vocab_file_length(self.path_to_vocab_file_all)
@@ -153,20 +167,20 @@ class RunModel:
                     f.write("%s\n" % item)
 
         # Dataloaders for train, val & test
-        text2kp_train = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_train,
-            path_to_csv=self.path_to_csv_train,
-            path_to_vocab_file=self.path_to_vocab_file_train,
-            transform=ToTensor())
-        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=1, shuffle=True,
-                                                             num_workers=0)
-
-        # text2kp_val = TextKeypointsDataset(
-        #     path_to_numpy_file=self.path_to_numpy_file_val,
-        #     path_to_csv=self.path_to_csv_val,
-        #     path_to_vocab_file=self.path_to_vocab_file_val,
+        # text2kp_train = TextKeypointsDataset(
+        #     path_to_numpy_file=self.path_to_numpy_file_train,
+        #     path_to_csv=self.path_to_csv_train,
+        #     path_to_vocab_file=self.path_to_vocab_file_train,
         #     transform=ToTensor())
-        # self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True, num_workers=0)
+        # self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=1, shuffle=True,
+        #                                                      num_workers=0)
+
+        text2kp_val = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_val,
+            path_to_csv=self.path_to_csv_val,
+            path_to_vocab_file=self.path_to_vocab_file_val,
+            transform=ToTensor())
+        self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True, num_workers=0)
 
         #
         # text2kp_test = TextKeypointsDataset(
@@ -179,14 +193,14 @@ class RunModel:
         # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
 
         # model options: "basic", "attn", "trans"
+        self.writer = SummaryWriter()
 
         model = "attn"
         if model == "basic":
             self.model = self.init_model(self.output_dim, self.hidden_size, self.embed_size,
                                          self.num_layers)
         elif model == "attn":
-            self.model = self.init_model_attn(self.output_dim, self.hidden_size, self.embed_size,
-                                              self.num_layers)
+            self.model = self.init_model_attn(self.output_dim, self.hidden_size, self.num_layers)
         elif model == "trans":
             self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.embed_size,
                                                self.num_layers)
@@ -199,7 +213,7 @@ class RunModel:
 
         # print and train model
         print(self.model)
-        self.train_run(self.data_loader_train, self.num_iteration)
+        self.train_run(self.data_loader_train, self.data_loader_val, self.num_iteration)
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
@@ -216,7 +230,7 @@ class RunModel:
         model = Seq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
         return model
 
-    def init_model_attn(self, output_dim, hidden_dim, embed_size, num_layers):
+    def init_model_attn(self, output_dim, hidden_dim, num_layers):
         # create encoder-decoder model with attention
         encoder = AttnEncoder(hidden_dim, num_layers)
         decoder = AttnDecoderRNN(output_dim, hidden_dim)
@@ -233,10 +247,10 @@ class RunModel:
         model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
         return model
 
-    def train_run(self, keypoints_loader, num_iteration):
+    def train_run(self, train_loader, val_loader, num_iteration):
         """
         the outer most train method, the whole train procesdure is started here
-        :param keypoints_loader:
+        :param train_loader:
         :param num_iteration:
         :return:
         """
@@ -248,11 +262,15 @@ class RunModel:
         time_save = time.time()  # start taking time to show on save
         time_end = time.time() + 60 * self.minutes + 60 * 60 * self.hours  # remaining training time
 
-        total_loss_run = 0
-        total_loss_save = 0
+        train_loss_show = 0
+        train_loss_save = 0
         idx_epoch = 1
         idx_epoch_save = 0
-        it = iter(keypoints_loader)
+        it_train = iter(train_loader)
+
+        it_val = iter(val_loader)
+        val_loss_show = 0
+        val_loss_save = 0
 
         if self.use_epochs == 1:
             remaining = 1
@@ -264,24 +282,43 @@ class RunModel:
 
         while remaining <= end:
             try:
-                iterator_data = next(it)
+                while 1:
+                    train_data = next(it_train)
+                    if torch.as_tensor(train_data[0], dtype=torch.float, device=device).view(-1, 1, 274).size(0) < 800:
+                        break
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-                it = iter(keypoints_loader)
+                it_train = iter(train_loader)
 
-            source_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274)
-            target_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
+            loss = self.train_model(train_data, model_optimizer, criterion)
+            train_loss_show += loss
+            train_loss_save += loss
 
-            loss = self.train_model(source_ten, target_ten, model_optimizer, criterion)
-            total_loss_run += loss
-            total_loss_save += loss
+            try:
+                while 1:
+                    val_data = next(it_val)
+                    if torch.as_tensor(val_data[0], dtype=torch.float, device=device).view(-1, 1, 274).size(
+                            0) < 800:
+                        break
+            except StopIteration:  # reinitialize data loader if num_iteration > amount of data
+                val_data = iter(val_loader)
+
+            output = self.val_model(val_data, criterion)
+            val_loss_show += output
+            val_loss_save += output
+
+            self.writer.add_scalar('Loss/train', train_loss_show, idx_epoch)
+            self.writer.add_scalar('Loss/test', val_loss_show, idx_epoch)
 
             if idx_epoch % self.show_every == 0:
                 elapsed_time_s = time.time() - time_run
-                average_loss = total_loss_run / self.show_every
-                total_loss_run = 0
+                train_avg_loss = train_loss_show / self.show_every
+                train_loss_show = 0
 
-                print('Epoch %d, average NLLLoss: %.2f, elapsed time: %s'
-                      % (idx_epoch, average_loss, str(datetime.timedelta(seconds=int(elapsed_time_s)))))
+                val_avg_loss = val_loss_show / self.show_every
+                val_loss_show = 0
+
+                print('Epoch %d, avg train loss: %.2f, avg eval loss: %.2f, elapsed time: %s'
+                      % (idx_epoch, train_avg_loss, val_avg_loss, str(datetime.timedelta(seconds=int(elapsed_time_s)))))
 
                 remaining_time = int(time_end - time.time())
                 if time_end != 0.0:
@@ -289,17 +326,20 @@ class RunModel:
 
             if idx_epoch % self.save_every == 0:
                 elapsed_time_s = time.time() - time_save
-                average_loss = total_loss_save / self.save_every
-                total_loss_save = 0
+                train_avg_loss = train_loss_save / self.save_every
+                train_loss_save = 0
 
-                print('Saving at epoch %d, average loss: %.2f' % (idx_epoch, average_loss))
+                val_avg_loss = val_loss_save / self.save_every
+                val_loss_save = 0
+
+                print('Saving at epoch %d, average loss: %.2f' % (idx_epoch, train_avg_loss))
 
                 # refresh idx_epoch_save each time saving is called
                 idx_epoch_save = idx_epoch - idx_epoch_save
-
                 self.documentation["epochs_total"] = idx_epoch_save
                 self.documentation["time_total_s"] = elapsed_time_s
-                self.documentation["loss"] = [round(average_loss, 2)]
+                self.documentation["train_loss"] = [round(train_avg_loss, 2)]
+                self.documentation["val_loss"] = [round(val_avg_loss, 2)]
 
                 idx_epoch_save = idx_epoch
                 time_save = time.time()
@@ -312,7 +352,7 @@ class RunModel:
 
             idx_epoch += 1
 
-    def train_model(self, source_tensor, target_tensor, model_optimizer, criterion):
+    def train_model(self, train_data, model_optimizer, criterion):
         """
         the inner most method to train the model, the actual training is implemented here
         :param source_tensor:
@@ -321,6 +361,9 @@ class RunModel:
         :param criterion:
         :return:
         """
+
+        source_tensor = torch.as_tensor(train_data[0], dtype=torch.float, device=device).view(-1, 1, 274)
+        target_tensor = torch.as_tensor(train_data[1], dtype=torch.long, device=device).view(-1, 1)
 
         model_optimizer.zero_grad()
         loss = 0.0
@@ -336,19 +379,45 @@ class RunModel:
         epoch_loss = loss.item() / num_iter
         return epoch_loss
 
-    def evaluate_model_own(self, keypoints_loader):
-        # evaluate (kommt da was sinnvolles raus?)
-        it = iter(keypoints_loader)
+    def val_model(self, train_data, criterion):
+        """Validate model during train runtime"""
+        loss = 0.0
 
+        with torch.no_grad():
+            source_tensor = torch.as_tensor(train_data[0], dtype=torch.float, device=device).view(-1, 1, 274)
+            target_tensor = torch.as_tensor(train_data[1], dtype=torch.long, device=device).view(-1, 1)
+
+            output = self.model(source_tensor, target_tensor)
+            num_iter = output.size(0)
+
+            # calculate the loss from a predicted sentence with the expected result
+            for ot in range(num_iter):  # creating user warning of tensor
+                loss += criterion(output[ot], target_tensor[ot])
+            epoch_loss = loss.item() / num_iter
+        return epoch_loss
+
+    def evaluate_model_own(self, keypoints_loader):
+        """
+        Evaluate Model after trainign and print example sentences
+        
+        :param keypoints_loader: 
+        :return: 
+        """""
+        it = iter(keypoints_loader)
+        rouge = Rouge()
         for idx in range(1, self.num_iteration_eval + 1):
             try:
-                iterator_data = next(it)
+                while 1:
+                    iterator_data = next(it)
+                    if torch.as_tensor(iterator_data[0], dtype=torch.float, device=device).view(-1, 1, 274).size(
+                            0) < 800:
+                        break
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 it = iter(keypoints_loader)
 
             with torch.no_grad():
-                in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274)
-                out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1)
+                in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float, device=device).view(-1, 1, 274)
+                out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long, device=device).view(-1, 1)
                 print("---" * 10)
 
                 flat_list = []  # sentence representation in int
@@ -356,7 +425,8 @@ class RunModel:
                     for item in sublist:
                         flat_list.append(item)
 
-                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))[:-1]
+                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))[
+                             :-1]
                 hyp_str = " ".join(hypothesis)
 
                 print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
@@ -372,23 +442,39 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                reference = DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                reference = DataUtils().int2text(decoded_words,
+                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_train))
 
                 if "<eos>" in reference[-1]:
-                    reference = reference[:-1]
+                    reference.remove("<eos>")
 
                 ref_str = " ".join(reference)
 
-                if len(hypothesis) >= 4 or len(reference) >= 4:
-                    # there may be several references
-                    bleu_score = round(nltk.translate.bleu_score.sentence_bleu([reference], hypothesis), 2)
-                    print("BLEU score: %d" % bleu_score)
-                    self.documentation["BLEU"].append(bleu_score)
+                # if len(hypothesis) >= 4 or len(reference) >= 4:
+                # there may be several references
+                bleu1_score = round(sentence_bleu([reference], hypothesis, weights=(1, 0, 0, 0)), 4)
+                bleu2_score = round(sentence_bleu([reference], hypothesis, weights=(0.5, 0.5, 0, 0)), 4)
+                bleu3_score = round(sentence_bleu([reference], hypothesis, weights=(0.33, 0.33, 0.33, 0)), 4)
+                bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
+                meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
+                # print(rouge.get_scores(hyp_str, ref_str))
+                rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
+                self.documentation["Epoch_BLEU1-4_METEOR_ROUGE"].append([bleu1_score, bleu2_score, bleu3_score,
+                                                                   bleu4_score, meteor_score, rouge_score])
+
+                # cumulative BLEU scores
+                print('BLEU Cumulative 1-gram: %f' % bleu1_score)
+                print('BLEU Cumulative 2-gram: %f' % bleu2_score)
+                print('BLEU Cumulative 3-gram: %f' % bleu3_score)
+                print('BLEU Cumulative 4-gram: %f' % bleu4_score)
+                print('BLEU Cumulative 4-gram: %f' % bleu4_score)
+                print('METEOR score: %f' % meteor_score)
+                print('ROUGE-L F1 score score: %f' % rouge_score)
 
                 print("Hyp: %s" % hyp_str)
                 print("Ref: %s" % ref_str)
                 self.documentation["hypothesis"].append(hyp_str)
-                self.documentation["reference"].append(ref_str[:20])  # cut reference down so its readable in the log
+                self.documentation["reference"].append(ref_str)  # cut reference down so its readable in the log
 
                 self.save_helper(self.save_state, Mode.eval)
 
@@ -412,11 +498,12 @@ class RunModel:
             self.documentation = {"epochs_total": 0,
                                   "time_total_s": 0,
                                   "time_total_readable": "",
-                                  "loss": [],
-                                  "loss_time_epoch": [],
+                                  "train_loss": [],
+                                  "val_loss": [],
+                                  "tloss_vloss_time_epoch": [],
                                   "hypothesis": [],
                                   "reference": [],
-                                  "BLEU": [],
+                                  "Epoch_BLEU1-4_METEOR_ROUGE": [],
                                   }
 
 

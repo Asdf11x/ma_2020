@@ -59,7 +59,7 @@ class Helper:
             save_model_file_path = current_folder / "model.pt"
             torch.save(model, save_model_file_path)
 
-            doc["loss_time_epoch"].append([float(doc["loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
+            doc["tloss_vloss_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
                                            doc["epochs_total"]])
 
             # Loss is not shown correctly
@@ -89,8 +89,9 @@ class Helper:
                 doc_load["time_total_s"] = doc_load["time_total_s"] + doc["time_total_s"]
                 doc_load["time_total_readable"] = \
                     str(timedelta(seconds=(int(doc_load["time_total_s"]))))  # convert the time above
-                doc_load["loss"] = doc["loss"]
-                doc_load["loss_time_epoch"].append([float(doc["loss"][0]), doc_load["time_total_readable"],
+                doc_load["train_loss"] = doc["train_loss"]
+                doc_load["val_loss"] = doc["val_loss"]
+                doc_load["tloss_vloss_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]), doc_load["time_total_readable"],
                                                     doc_load["epochs_total"]])
 
             elif mode == Mode.eval:
@@ -100,8 +101,9 @@ class Helper:
                 for element in doc["reference"]:
                     doc_load["reference"].append(element)
 
-                for element in doc["BLEU"]:
-                    doc_load["BLEU"].append(element)
+                for element in doc["Epoch_BLEU1-4_METEOR_ROUGE"]:
+                    element.insert(0, doc_load["epochs_total"])  # add epochs as information
+                    doc_load["Epoch_BLEU1-4_METEOR_ROUGE"].append(element)
 
             torch.save(model, save_model_file_path)
 

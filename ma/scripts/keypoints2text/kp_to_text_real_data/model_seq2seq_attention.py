@@ -23,7 +23,7 @@ class AttnEncoder(nn.Module):
         self.num_layers = num_layers
 
         # 274 fixed input dim, since currently are used 274 keypoints
-        self.gru = nn.GRU(274, self.hidden_dim)
+        self.gru = nn.GRU(274, self.hidden_dim, num_layers=2)
 
     def forward(self, input, hidden):
         input = input.view(1, 1, -1)
@@ -31,11 +31,11 @@ class AttnEncoder(nn.Module):
         return output, hidden
 
     def initHidden(self):
-        return torch.zeros(1, 1, self.hidden_dim, device=device)
+        return torch.zeros(2, 1, self.hidden_dim, device=device)
 
 
 class AttnDecoderRNN(nn.Module):
-    def __init__(self, output_dim, hidden_size, dropout_p=0.1, max_length=350):
+    def __init__(self, output_dim, hidden_size, dropout_p=0.1, max_length=800):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_dim = output_dim
@@ -46,7 +46,7 @@ class AttnDecoderRNN(nn.Module):
         self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(0.2)
-        self.gru = nn.GRU(self.hidden_size, self.hidden_size)
+        self.gru = nn.GRU(self.hidden_size, self.hidden_size, num_layers=2)
         self.out = nn.Linear(self.hidden_size, self.output_dim)
 
     def forward(self, input, hidden, encoder_outputs):
@@ -82,7 +82,7 @@ class AttnDecoderRNN(nn.Module):
         return output, hidden, attn_weights
 
     def initHidden(self):
-        return torch.zeros(1, 1, self.hidden_size, device=device)
+        return torch.zeros(2, 1, self.hidden_size, device=device)
 
 
 class AttnSeq2Seq(nn.Module):
@@ -97,7 +97,7 @@ class AttnSeq2Seq(nn.Module):
         self.SOS_token = SOS_token
         self.EOS_token = EOS_token
 
-    def forward(self, source_tensor, target_tensor, teacher_forcing_ratio=0.5, max_length=350):
+    def forward(self, source_tensor, target_tensor, teacher_forcing_ratio=0.5, max_length=800):
 
         input_length = source_tensor.size(0)
         target_length = target_tensor.size(0)
@@ -112,6 +112,7 @@ class AttnSeq2Seq(nn.Module):
         loss = 0
         # print("input length: %d" % input_length)
         # print("encoder outputs size: %s" % str(encoder_outputs.size()))
+        # print(input_length)
         for ei in range(input_length):
             encoder_output, encoder_hidden = self.encoder(source_tensor[ei], encoder_hidden)
             encoder_outputs[ei] = encoder_output[0, 0]
