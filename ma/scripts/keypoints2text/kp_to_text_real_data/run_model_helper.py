@@ -3,13 +3,17 @@ run_model_helper.py: contains methods not directly involved in training/evaluati
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 import time
 import torch
 from enum import Enum
 import json
 import shutil
+from matplotlib import pyplot as plt
+import numpy as np
+from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+
 
 class Save(Enum):
     new = 0
@@ -27,8 +31,25 @@ class Helper:
         self.summary_name = "summary.txt"
         self.run_info = "train_info.txt"
         self.eval_info = "eval_info.txt"
+        self.model_name = "model.pt"
 
-    def save_model(self, model, save_model_folder_path, save_model_file_path, doc, state, mode):
+    def create_run_folder(self, save_model_folder_path):
+        save_model_folder_path = Path(save_model_folder_path)
+        # create timestring to name folde to save current model
+        timestr = time.strftime("%Y-%m-%d_%H-%M")
+
+        # create new target directory, the files will be saved there
+        if not os.path.exists(save_model_folder_path):
+            os.makedirs(save_model_folder_path)
+
+        if not os.path.exists(save_model_folder_path / timestr):
+            os.makedirs(save_model_folder_path / timestr)
+
+        current_folder = save_model_folder_path / timestr
+        return current_folder
+
+    def save_model(self, model, current_folder, save_model_file_path, doc, state, mode, train_path="", val_path="",
+                   test_path=""):
         """
         Use as documentation for a training run, saved training values are time, epochs, loss. Saved evaluation values are
         Hypothesis sample sentence, Reference sample sentence and BLEU score
@@ -36,40 +57,39 @@ class Helper:
         This method is executed in a extra "save loop", so each  x epochs (x=save_epoch) this method is run,
         saves values of the last x epochs and adds them to already saved ones
         """
-        save_model_folder_path = Path(save_model_folder_path)
 
         # if new, a new document is created and all values are saved in that document
         # new is only the first save of a new model, then Save is set to update
         if state == Save.new:
+            if os.path.exists(train_path):
+                train_length = DataUtils().get_file_length(train_path)
+            else:
+                train_length = 0
 
-            save_model_folder_path = Path(save_model_folder_path)
+            if os.path.exists(val_path):
+                val_length = DataUtils().get_file_length(val_path)
+            else:
+                val_length = 0
 
-            # create timestring to name folde to save current model
-            timestr = time.strftime("%Y-%m-%d_%H-%M")
-
-            # create new target directory, the files will be saved there
-            if not os.path.exists(save_model_folder_path):
-                os.makedirs(save_model_folder_path)
-
-            if not os.path.exists(save_model_folder_path / timestr):
-                os.makedirs(save_model_folder_path / timestr)
-
-            current_folder = save_model_folder_path / timestr
-
-            save_model_file_path = current_folder / "model.pt"
-            torch.save(model, save_model_file_path)
-
-            doc["tloss_vloss_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]), str(timedelta(seconds=(int(doc["time_total_s"])))),
-                                           doc["epochs_total"]])
-
-            # Loss is not shown correctly
+            if os.path.exists(test_path):
+                test_length = DataUtils().get_file_length(test_path)
+            else:
+                test_length = 0
 
             shutil.copyfile("hparams.json", current_folder / self.summary_name)
 
-            with open(current_folder / self.summary_name, 'a+') as outfile:
-                outfile.write("\n")
-                outfile.write(repr(model))
+            save_model_file_path = current_folder / self.model_name
+            torch.save(model, save_model_file_path)
 
+            doc["tloss_vloss_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]),
+                                                  str(timedelta(seconds=(int(doc["time_total_s"])))),
+                                                  doc["epochs_total"]])
+
+            with open(current_folder / self.summary_name, 'a+') as outfile:
+                outfile.write("\n\n")
+                outfile.write(repr(model))
+                outfile.write(
+                    "\n\nTrain length: %d\nVal length: %d\nTest length: %d" % (train_length, val_length, test_length))
 
             with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc, outfile)
@@ -91,8 +111,9 @@ class Helper:
                     str(timedelta(seconds=(int(doc_load["time_total_s"]))))  # convert the time above
                 doc_load["train_loss"] = doc["train_loss"]
                 doc_load["val_loss"] = doc["val_loss"]
-                doc_load["tloss_vloss_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]), doc_load["time_total_readable"],
-                                                    doc_load["epochs_total"]])
+                doc_load["tloss_vloss_time_epoch"].append(
+                    [float(doc["train_loss"][0]), float(doc["val_loss"][0]), doc_load["time_total_readable"],
+                     doc_load["epochs_total"]])
 
             elif mode == Mode.eval:
                 for element in doc["hypothesis"]:
@@ -109,6 +130,19 @@ class Helper:
 
             with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc_load, outfile)
+
+    def save_graph(self, current_folder, plotter):
+        current_folder = Path(current_folder)
+        train = plotter["train_loss"]
+        val = plotter["val_loss"]
+
+        x = np.linspace(0, len(train), len(train))
+        plt.plot(x, train, label="train")
+        plt.plot(x, val, label="val")
+        plt.legend()
+        # plt.show()
+        save_graph = "train_val_loss_%d.png" % len(plotter["train_loss"])
+        plt.savefig(current_folder / save_graph)
 
     def get_origin_json(self, save_model_file_path):
         current_folder = Path(save_model_file_path.parent)

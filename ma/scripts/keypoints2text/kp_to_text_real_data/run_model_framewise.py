@@ -25,9 +25,9 @@ from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEnco
 from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
 from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 import datetime
-import nltk
 from nltk.translate.bleu_score import sentence_bleu
 from nltk.translate.meteor_score import single_meteor_score
 from rouge import Rouge
@@ -140,6 +140,8 @@ class RunModel:
         # self.input_dim = config["padding"]["input_dim"]  # length of source keypoints
         self.output_dim = config["padding"]["output_dim"]  # output_dim != max_length. max_length == hidden_size
 
+        self.current_folder = Helper().create_run_folder(self.save_model_folder_path)
+
         # Dataloaders for train, val & test
         text2kp_train = TextKeypointsDataset(
             path_to_numpy_file=self.path_to_numpy_file_train,
@@ -151,7 +153,8 @@ class RunModel:
 
         # vocab size, amount of different unique words
         if self.output_dim == 0:
-            self.output_dim = DataUtils().get_vocab_file_length(self.path_to_vocab_file_all)
+            self.output_dim = DataUtils().get_file_length(self.path_to_vocab_file_all)
+
 
         # max length of source keypoints and target sentence
         if self.hidden_size == 0:
@@ -162,7 +165,7 @@ class RunModel:
                 self.hidden_size = max_len_source
             else:
                 self.hidden_size = max_len_target
-            with open('lengths.txt', 'w') as f:
+            with open('../tests_graphs/lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
 
@@ -193,8 +196,8 @@ class RunModel:
         # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
 
         # model options: "basic", "attn", "trans"
-        self.writer = SummaryWriter()
-
+        self.writer = SummaryWriter(self.current_folder)
+        self.plotter = {"train_loss": [], "val_loss": []}
         model = "attn"
         if model == "basic":
             self.model = self.init_model(self.output_dim, self.hidden_size, self.embed_size,
@@ -214,6 +217,10 @@ class RunModel:
         # print and train model
         print(self.model)
         self.train_run(self.data_loader_train, self.data_loader_val, self.num_iteration)
+        self.writer.close()
+
+        # save graph after training
+        Helper().save_graph(self.current_folder, self.plotter)
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
@@ -233,7 +240,7 @@ class RunModel:
     def init_model_attn(self, output_dim, hidden_dim, num_layers):
         # create encoder-decoder model with attention
         encoder = AttnEncoder(hidden_dim, num_layers)
-        decoder = AttnDecoderRNN(output_dim, hidden_dim)
+        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers)
         model = AttnSeq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
         return model
 
@@ -289,9 +296,9 @@ class RunModel:
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 it_train = iter(train_loader)
 
-            loss = self.train_model(train_data, model_optimizer, criterion)
-            train_loss_show += loss
-            train_loss_save += loss
+            train_loss = self.train_model(train_data, model_optimizer, criterion)
+            train_loss_show += train_loss
+            train_loss_save += train_loss
 
             try:
                 while 1:
@@ -300,14 +307,19 @@ class RunModel:
                             0) < 800:
                         break
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
-                val_data = iter(val_loader)
+                it_val = iter(val_loader)
 
-            output = self.val_model(val_data, criterion)
-            val_loss_show += output
-            val_loss_save += output
+            val_loss = self.val_model(val_data, criterion)
+            val_loss_show += val_loss
+            val_loss_save += val_loss
 
-            self.writer.add_scalar('Loss/train', train_loss_show, idx_epoch)
-            self.writer.add_scalar('Loss/test', val_loss_show, idx_epoch)
+            # save for plotting
+            self.plotter["train_loss"].append(train_loss)
+            self.plotter["val_loss"].append(val_loss)
+
+            # add to tensorboard
+            self.writer.add_scalar('Loss/train', train_loss, idx_epoch)
+            self.writer.add_scalar('Loss/val', val_loss, idx_epoch)
 
             if idx_epoch % self.show_every == 0:
                 elapsed_time_s = time.time() - time_run
@@ -379,13 +391,14 @@ class RunModel:
         epoch_loss = loss.item() / num_iter
         return epoch_loss
 
-    def val_model(self, train_data, criterion):
+    def val_model(self, data, criterion):
         """Validate model during train runtime"""
         loss = 0.0
 
         with torch.no_grad():
-            source_tensor = torch.as_tensor(train_data[0], dtype=torch.float, device=device).view(-1, 1, 274)
-            target_tensor = torch.as_tensor(train_data[1], dtype=torch.long, device=device).view(-1, 1)
+            source_tensor = torch.as_tensor(data[0], dtype=torch.float, device=device).view(-1, 1, 274)
+
+            target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1, 1)
 
             output = self.model(source_tensor, target_tensor)
             num_iter = output.size(0)
@@ -458,9 +471,13 @@ class RunModel:
                 bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
                 meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
                 # print(rouge.get_scores(hyp_str, ref_str))
-                rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
+                try:
+                    rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
+                except ValueError:
+                    rouge_score = 0.0
+
                 self.documentation["Epoch_BLEU1-4_METEOR_ROUGE"].append([bleu1_score, bleu2_score, bleu3_score,
-                                                                   bleu4_score, meteor_score, rouge_score])
+                                                                         bleu4_score, meteor_score, rouge_score])
 
                 # cumulative BLEU scores
                 print('BLEU Cumulative 1-gram: %f' % bleu1_score)
@@ -484,14 +501,16 @@ class RunModel:
 
             # save in new file and model
             if save == Save.new:
-                self.save_model_file_path = Helper().save_model(self.model, self.save_model_folder_path,
+                self.save_model_file_path = Helper().save_model(self.model, self.current_folder,
                                                                 self.save_model_file_path,
-                                                                self.documentation, self.save_state, mode)
+                                                                self.documentation, self.save_state, mode,
+                                                                self.path_to_csv_train, self.path_to_csv_val,
+                                                                self.path_to_csv_test)
                 self.save_state = Save.update
 
             # update file and model
             else:
-                Helper().save_model(self.model, self.save_model_folder_path, self.save_model_file_path,
+                Helper().save_model(self.model, self.current_folder, self.save_model_file_path,
                                     self.documentation, self.save_state, mode)
 
             # reset variables

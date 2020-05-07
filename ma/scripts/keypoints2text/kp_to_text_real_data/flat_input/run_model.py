@@ -19,7 +19,7 @@ import torch.utils
 import torch.utils.data
 import os
 import time
-from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
+from keypoints2text.kp_to_text_real_data.flat_input.data_loader import TextKeypointsDataset, ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
 from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
@@ -36,7 +36,7 @@ class RunModel:
     def __init__(self):
 
         # read settings file, didnt use configparser, because config parser saves everything as string
-        with open("hparams.json") as json_file:
+        with open("../hparams.json") as json_file:
             config = json.load(json_file)
 
         # model settings
@@ -141,13 +141,13 @@ class RunModel:
 
         # vocab size, amount of different unique words
         if self.output_dim == 0:
-            self.output_dim = DataUtils().get_vocab_file_length(self.path_to_vocab_file_all)
+            self.output_dim = DataUtils().get_file_length(self.path_to_vocab_file_all)
 
         # max length of source keypoints and target sentence
         if self.hidden_size_enc == 0 or self.hidden_size_dec == 0:
             print("Searching for source and target max length")
             self.hidden_size_enc, self.hidden_size_dec, lengths = DataUtils().get_kp_text_max_lengths(self.data_loader_train, self.data_loader_train, self.data_loader_train)
-            with open('lengths.txt', 'w') as f:
+            with open('../../tests_graphs/lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
 

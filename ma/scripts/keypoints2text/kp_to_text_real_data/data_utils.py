@@ -62,7 +62,7 @@ class DataUtils:
             text2index.append(indexes)
         return text2index
 
-    def get_vocab_file_length(self, path_to_vocab_file):
+    def get_file_length(self, path_to_vocab_file):
         """
         Get file length of a vocab file
         -- !! Assuming each line contains ONE SINGLE UNIQUE WORD !! --
