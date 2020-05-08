@@ -17,3 +17,5 @@ Scripts for data preprocessing in master/ma/scripts
   - [text_to_kps_dataset.py](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/text_to_kps_dataset.py): Data loaders for text to keypoints using a npy (keypoints) and a csv file (holding text and the links from text to keypoints)
   - [text_to_kps_test.py](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/text_to_kps_test.py): test text_to_kps_dataset.py print the obtained data
   - [gru99_model_own.py](https://github.com/Asdf11x/mt_2020/blob/master/ma/scripts/Dataloader/text_to_kp/gru99_model_own.py): basic seq2seq model using text_to_kps_dataset.py
+ - [signs2text](https://github.com/Asdf11x/mt_2020/tree/master/ma/scripts/keypoints2text/kp_to_text_real_data): Current (08.05.20) implementation of basic seq2seq, seq2seq with attention and the beginning of a transformer model. 
+ - [Data Utils](https://github.com/Asdf11x/mt_2020/tree/master/ma/scripts/keypoints2text/utils) contains a few scripts for data preprocessing
