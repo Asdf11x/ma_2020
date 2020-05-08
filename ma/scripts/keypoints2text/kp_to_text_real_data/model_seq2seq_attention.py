@@ -14,16 +14,17 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class AttnEncoder(nn.Module):
-    def __init__(self, hidden_dim, num_layers):
+    def __init__(self, input_dim, hidden_dim, num_layers):
         super(AttnEncoder, self).__init__()
 
         # set the encoder input dimesion , embbed dimesion, hidden dimesion, and number of layers
         # self.input_dim = input_dim
+        self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
 
         # 274 fixed input dim, since currently are used 274 keypoints
-        self.gru = nn.GRU(274, self.hidden_dim, num_layers=self.num_layers)
+        self.gru = nn.GRU(self.input_dim, self.hidden_dim, num_layers=self.num_layers)
 
     def forward(self, input, hidden):
         input = input.view(1, 1, -1)
@@ -35,7 +36,7 @@ class AttnEncoder(nn.Module):
 
 
 class AttnDecoderRNN(nn.Module):
-    def __init__(self, output_dim, hidden_size, num_layers, dropout_p=0.1, max_length=800):
+    def __init__(self, output_dim, hidden_size, num_layers, dropout_p, max_length):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_dim = output_dim
@@ -46,7 +47,7 @@ class AttnDecoderRNN(nn.Module):
         self.embedding = nn.Embedding(self.output_dim, self.hidden_size)
         self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(self.dropout_p)
         self.gru = nn.GRU(self.hidden_size, self.hidden_size, num_layers=self.num_layers)
         self.out = nn.Linear(self.hidden_size, self.output_dim)
 
@@ -66,7 +67,7 @@ class AttnDecoderRNN(nn.Module):
         # print(torch.cat((embedded[0], hidden[0])))
         # print(self.attn(torch.cat((embedded[0], hidden[0]),1)))
 
-        attn_weights = F.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1).view(1,-1)), dim=1)
+        attn_weights = F.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1).view(1, -1)), dim=1)
         # print(attn_weights)
         # print(attn_weights.unsqueeze(0).size())
         # print(encoder_outputs.unsqueeze(0).size())
@@ -83,29 +84,31 @@ class AttnDecoderRNN(nn.Module):
         return output, hidden, attn_weights
 
     def initHidden(self):
-        return torch.zeros(2, 1, self.hidden_size, device=device)
+        return torch.zeros(self.num_layers, 1, self.hidden_size, device=device)
 
 
 class AttnSeq2Seq(nn.Module):
 
-    def __init__(self, encoder, decoder, device, SOS_token, EOS_token):
+    def __init__(self, encoder, decoder, device, teacher_forcing, max_length, SOS_token, EOS_token):
         super().__init__()
 
         # initialize the encoder and decoder
         self.encoder = encoder
         self.decoder = decoder
         self.device = device
+        self.teacher_forcing = teacher_forcing
+        self.max_length = max_length
         self.SOS_token = SOS_token
         self.EOS_token = EOS_token
 
-    def forward(self, source_tensor, target_tensor, teacher_forcing_ratio=0.5, max_length=800):
+    def forward(self, source_tensor, target_tensor):
 
         input_length = source_tensor.size(0)
         target_length = target_tensor.size(0)
         batch_size = target_tensor.shape[1]
         vocab_size = self.decoder.output_dim
 
-        encoder_outputs = torch.zeros(max_length, self.encoder.hidden_dim, device=device)
+        encoder_outputs = torch.zeros(self.max_length, self.encoder.hidden_dim, device=device)
         encoder_hidden = self.encoder.initHidden()
         # encoder_outputs = torch.zeros(100000, self.encoder.hidden_dim, device=device)
         outputs = torch.zeros(target_length, batch_size, vocab_size).to(self.device)
@@ -128,7 +131,7 @@ class AttnSeq2Seq(nn.Module):
 
         decoder_hidden = encoder_hidden
 
-        use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+        use_teacher_forcing = True if random.random() < self.teacher_forcing else False
         if use_teacher_forcing:
             # Teacher forcing: Feed the target as the next input
             for di in range(target_length):

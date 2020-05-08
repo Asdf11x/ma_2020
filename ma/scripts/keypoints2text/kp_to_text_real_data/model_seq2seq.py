@@ -14,10 +14,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Encoder(nn.Module):
-    def __init__(self, hidden_dim, num_layers):
+    def __init__(self, input_dim, hidden_dim, num_layers):
         super(Encoder, self).__init__()
 
         # set the encoder input dimesion , embbed dimesion, hidden dimesion, and number of layers
+        self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
 
@@ -25,7 +26,7 @@ class Encoder(nn.Module):
         # set the number of gru layers
         # GRU doesnt need initialization:
         # https://github.com/bentrevett/pytorch-seq2seq/blob/master/3%20-%20Neural%20Machine%20Translation%20by%20Jointly%20Learning%20to%20Align%20and%20Translate.ipynb
-        self.gru = nn.GRU(274, self.hidden_dim, num_layers=self.num_layers)
+        self.gru = nn.GRU(self.input_dim, self.hidden_dim, num_layers=self.num_layers)
 
     def forward(self, src):
         outputs, hidden = self.gru(src.view(1, 1, -1))
@@ -34,18 +35,17 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, output_dim, hidden_dim, embbed_dim, num_layers):
+    def __init__(self, output_dim, hidden_dim, num_layers):
         super(Decoder, self).__init__()
 
         # set the encoder output dimension, embed dimension, hidden dimension, and number of layers
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
-        self.embbed_dim = embbed_dim
         self.num_layers = num_layers
 
         # initialize every layer with the appropriate dimension. For the decoder layer, it will consist of an embedding, GRU, a Linear layer and a Log softmax activation function.
-        self.embedding = nn.Embedding(self.output_dim, self.embbed_dim)  # TODO vocab size input for embedding + 1
-        self.gru = nn.GRU(self.embbed_dim, self.hidden_dim, num_layers=self.num_layers)
+        self.embedding = nn.Embedding(self.output_dim, self.hidden_dim)  # TODO vocab size input for embedding + 1
+        self.gru = nn.GRU(self.hidden_dim, self.hidden_dim, num_layers=self.num_layers)
         self.out = nn.Linear(self.hidden_dim, self.output_dim)
         self.softmax = nn.LogSoftmax(dim=1)
 

@@ -42,9 +42,6 @@ except ImportError:  # server uses different imports than local
     from data_utils import DataUtils
     from run_model_helper import Helper, Save, Mode
 
-
-
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -58,9 +55,11 @@ class RunModel:
 
         # model settings
         self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
-        self.embed_size = config["model_settings"]["embed_size"]  # vocab list size
+        self.input_size = config["model_settings"]["input_size"]
         self.hidden_size = config["model_settings"]["hidden_size"]
         self.num_layers = config["model_settings"]["num_layers"]
+        self.max_length = config["model_settings"]["max_length"]
+        self.dropout = config["model_settings"]["dropout"]
 
         # train settings
         self.use_epochs = config["train_settings"]["use_epochs"]  # 0: time, 1: epochs
@@ -70,8 +69,8 @@ class RunModel:
         self.show_every = config["train_settings"]["show_every"]
 
         # eval settings
-        self.evaluate_model = config["eval_settings"][
-            "evaluate_model"]  # 0: model is not evaluated, 1: model is evaluated
+        # 0: model is not evaluated, 1: model is evaluated
+        self.evaluate_model = config["eval_settings"]["evaluate_model"]
         self.num_iteration_eval = config["eval_settings"]["num_iteration_eval"]
 
         # test settings
@@ -103,8 +102,8 @@ class RunModel:
 
         # save / load
         self.save_model = config["save_load"]["save_model"]  # 0: model is not saved, 1: model is saved
-        self.save_model_file_path = config["save_load"][
-            "save_model_file_path"]  # if not empty use path, else create new folder, use only when documentation exists
+        # if not empty use path, else create new folder, use only when documentation exists
+        self.save_model_file_path = config["save_load"]["save_model_file_path"]
         self.save_model_folder_path = config["save_load"]["save_model_folder_path"]
         self.save_every = config["save_load"]["save_every"]  # save each x epoch
         self.save_loss = []  # init list to save loss results
@@ -166,7 +165,6 @@ class RunModel:
         if self.output_dim == 0:
             self.output_dim = DataUtils().get_file_length(self.path_to_vocab_file_all)
 
-
         # max length of source keypoints and target sentence
         if self.hidden_size == 0:
             print("Searching for source and target max length")
@@ -211,13 +209,14 @@ class RunModel:
         self.plotter = {"train_loss": [], "val_loss": []}
         model = "attn"
         if model == "basic":
-            self.model = self.init_model(self.output_dim, self.hidden_size, self.embed_size,
-                                         self.num_layers)
+            self.model = self.init_model(self.input_size, self.output_dim, self.hidden_size,
+                                         self.num_layers, self.SOS_token, self.EOS_token)
         elif model == "attn":
-            self.model = self.init_model_attn(self.output_dim, self.hidden_size, self.num_layers)
+            self.model = self.init_model_attn(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
+                                              self.dropout, self.teacher_forcing_ratio, self.max_length, self.SOS_token,
+                                              self.EOS_token)
         elif model == "trans":
-            self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.embed_size,
-                                               self.num_layers)
+            self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.num_layers)
 
     def main(self):
         # check if model should be loaded or not. Loads model if model_file_path is set
@@ -241,21 +240,22 @@ class RunModel:
         if self.test_model:
             self.evaluate_model_own(self.data_loader_test)
 
-    def init_model(self, output_dim, hidden_dim, embed_size, num_layers):
+    def init_model(self, input_dim, output_dim, hidden_dim, num_layers, SOS_token, EOS_token):
         # create encoder-decoder model
-        encoder = Encoder(hidden_dim, num_layers)
-        decoder = Decoder(output_dim, hidden_dim, embed_size, num_layers)
-        model = Seq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
+        encoder = Encoder(input_dim, hidden_dim, num_layers)
+        decoder = Decoder(output_dim, hidden_dim, num_layers)
+        model = Seq2Seq(encoder, decoder, device, SOS_token, EOS_token).to(device)
         return model
 
-    def init_model_attn(self, output_dim, hidden_dim, num_layers):
+    def init_model_attn(self, input_dim, output_dim, hidden_dim, num_layers, dropout, teacher_forcing, max_length,
+                        SOS_token, EOS_token):
         # create encoder-decoder model with attention
-        encoder = AttnEncoder(hidden_dim, num_layers)
-        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers)
-        model = AttnSeq2Seq(encoder, decoder, device, self.SOS_token, self.EOS_token).to(device)
+        encoder = AttnEncoder(input_dim, hidden_dim, num_layers)
+        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers, dropout, max_length)
+        model = AttnSeq2Seq(encoder, decoder, device, teacher_forcing, max_length, SOS_token, EOS_token).to(device)
         return model
 
-    def init_model_trans(self, output_dim, hidden_dim, embed_size, num_layers):
+    def init_model_trans(self, output_dim, hidden_dim, num_layers):
         ntokens = output_dim  # the size of vocabulary
         emsize = 200  # embedding dimension
         nhid = 200  # the dimension of the feedforward network model in nn.TransformerEncoder
