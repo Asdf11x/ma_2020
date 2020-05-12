@@ -10,12 +10,17 @@ import torch
 from enum import Enum
 import json
 import shutil
+import matplotlib
+
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import numpy as np
+
 try:
     from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 except ImportError:  # server uses different imports than local
     from data_utils import DataUtils
+    from run_model_framewise import RunModel
 
 
 class Save(Enum):
@@ -35,8 +40,17 @@ class Helper:
         self.run_info = "train_info.txt"
         self.eval_info = "eval_info.txt"
         self.model_name = "model.pt"
+        self.hparams_path = ""
+
+    def set_params_path(self, hparams_path):
+        self.hparams_path = hparams_path
 
     def create_run_folder(self, save_model_folder_path):
+        """
+        Create a folder for the training run which is called current_folder, all information of one run is saved there
+        :param save_model_folder_path:
+        :return:
+        """
         save_model_folder_path = Path(save_model_folder_path)
         # create timestring to name folde to save current model
         timestr = time.strftime("%Y-%m-%d_%H-%M")
@@ -79,8 +93,10 @@ class Helper:
             else:
                 test_length = 0
 
-            shutil.copyfile("hparams.json", current_folder / self.summary_name)
+            # save used parameter file
+            shutil.copyfile(self.hparams_path, current_folder / self.summary_name)
 
+            # save model representation
             save_model_file_path = current_folder / self.model_name
             torch.save(model, save_model_file_path)
 

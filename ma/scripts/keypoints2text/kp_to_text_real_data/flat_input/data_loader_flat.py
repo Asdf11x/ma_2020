@@ -1,5 +1,5 @@
 """
-data_loader.py:
+data_loader_flat.py:
 Based on that tutorial
 https://stanford.edu/~shervine/blog/pytorch-how-to-generate-data-parallel
 

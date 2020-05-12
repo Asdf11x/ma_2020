@@ -5,8 +5,8 @@ kps_to_text_test.py: Test and print the computed data from kps_to_text_dataset.p
 - use .csv file (containing the connection between text <-> keypoint folder)
 """
 
-from keypoints2text.kp_to_text_real_data.flat_input.data_loader import TextKeypointsDataset
-from keypoints2text.kp_to_text_real_data.flat_input.data_loader import ToTensor
+from keypoints2text.kp_to_text_real_data.flat_input.data_loader_flat import TextKeypointsDataset
+from keypoints2text.kp_to_text_real_data.flat_input.data_loader_flat import ToTensor
 import torch
 import torch.utils
 import torch.utils.data

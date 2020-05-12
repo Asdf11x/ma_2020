@@ -4,52 +4,55 @@
     "input_size": 274,
     "hidden_size": 1024,
     "num_layers": 1,
-    "max_length": 800,
-    "dropout": 0.2
+    "max_length": 300,
+    "dropout": 0.2,
+    "bidirectional_encoder" : 1,
+    "batch_size": 1,
+    "model_type": "trans"
   },
   "train_settings": {
     "use_epochs": 1,
-    "num_iteration": 50,
+    "num_iteration": 1000,
     "hours": 0,
     "minutes": 2,
-    "show_every": 10
+    "show_every": 1
   },
   "eval_settings": {
-    "evaluate_model": 0,
-    "num_iteration_eval": 10
+    "evaluate_model": 1,
+    "num_iteration_eval": 20
   },
   "test_settings": {
     "test_model": 0
   },
   "train_paths": {
-    "path_to_numpy_file_train": "..\\....train_npy",
-    "path_to_csv_train": "..\\...train.id_transformed.txt_2npy.txt",
-    "path_to_vocab_file_train": "..\\...train_vocab.txt"
+    "path_to_numpy_file_train": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\all_files_normalized.npy",
+    "path_to_csv_train": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text_sample\\3_linked_to_npy\\how2sign.train.id_transformed.txt_2npy.txt",
+    "path_to_vocab_file_train": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text_sample\\1_vocab_list\\vocab_merged.txt"
   },
   "val_paths": {
-    "path_to_numpy_file_val": "..\\..._val.npy",
-    "path_to_csv_val": "..\\...val.id_transformed.txt_2npy.txt",
-    "path_to_vocab_file_val": "..\\...val_vocab.txt"
+    "path_to_numpy_file_val": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\all_files_normalized_val.npy",
+    "path_to_csv_val": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text_sample\\3_linked_to_npy\\how2sign.train.id_transformed.txt_2npy.txt",
+    "path_to_vocab_file_val": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text_sample\\1_vocab_list\\vocab_merged.txt"
   },
   "test_paths": {
-    "path_to_numpy_file_test": "..\\..._test.npy",
-    "path_to_csv_test": "..\\...test.id_transformed.txt_2npy.txt",
-    "path_to_vocab_file_test": "..\\...test_vocab.txt"
+    "path_to_numpy_file_test": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\all_files_normalized.npy",
+    "path_to_csv_test": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text\\3_linked_to_npy\\how2sign.test.id_transformed.txt_2npy.txt",
+    "path_to_vocab_file_test": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text_sample\\1_vocab_list\\how2sign.test.id_vocab.txt"
   },
   "vocab_file": {
-    "path_to_vocab_file_all": "..\\vocab_merged.txt"
+    "path_to_vocab_file_all": "C:\\Users\\Asdf\\Downloads\\How2Sign_samples\\text_sample\\1_vocab_list\\vocab_merged.txt"
   },
   "save_load": {
     "save_model": 1,
     "save_model_file_path": "",
-    "save_model_folder_path": "..\\saved_models",
-    "save_every": 10,
+    "save_model_folder_path": "C:\\Eigene_Programme\\Git-Data\\Own_Repositories\\ma_2020\\ma\\scripts\\keypoints2text\\kp_to_text_real_data\\saved_models",
+    "save_every": 1,
     "load_model": 0,
     "load_model_path": ""
   },
   "padding": {
     "input_dim": 291536,
-    "output_dim": 3580
+    "output_dim": 176
   },
   "loss_type": "NLLoss"
 }

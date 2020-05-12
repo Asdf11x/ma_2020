@@ -1,5 +1,5 @@
 """
-data_loader.py:
+data_loader_flat.py:
 Based on that tutorial
 https://stanford.edu/~shervine/blog/pytorch-how-to-generate-data-parallel
 
@@ -24,8 +24,8 @@ class TextKeypointsDataset(data.Dataset):
     Characterizes a dataset for PyTorch
     """
 
-    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None, kp_max_len=0,
-                 text_max_len=0):
+    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None, kp_max_len=300,
+                 text_max_len=300):
         self.path_to_numpy_file = path_to_numpy_file
         self.path_to_csv = path_to_csv
         self.path_to_vocab_file = path_to_vocab_file
@@ -85,21 +85,23 @@ class TextKeypointsDataset(data.Dataset):
                 keys_y.extend(temp_df['people'][0][k][1::3])
             keys_per_folder.append(keys_x + keys_y)
 
-        # get x and y values and concat the values
-        keys_x = [x for x in keys_x if isinstance(x, numbers.Number)]
-        keys_y = [x for x in keys_y if isinstance(x, numbers.Number)]
+        if self.transform:
+            keys_per_folder = self.transform(keys_per_folder)
 
-        padding_length = int(self.kp_max_len / 2)
-        keys_x += [0.0] * (padding_length - len(keys_x))
-        keys_y += [0.0] * (padding_length - len(keys_y))
-
-        keypoints.append(keys_x + keys_y)
-        keypoints = keypoints[0]  # remove one parenthesis
+        # keypoints padding
+        if self.kp_max_len > 0:
+            length = keys_per_folder.size(0)
+            keys = torch.zeros(self.kp_max_len, 274)
+            source = keys_per_folder
+            keys[:length, :] = source
+        else:
+            keys = keys_per_folder
 
         # load sentences
         # take the sentence column of .csv file and the word2int representation
         # -> transform sentence to index and take one line of it
-        sentence = [int(i) for i in DataUtils().text2index(self.saved_column_text, self.word2int)[index]]
+        # print(self.saved_column_text[index])
+        sentence = [int(i) for i in DataUtils().text2index([self.saved_column_text[index]], self.word2int)[0]]
         sentence.append(self.word2int["<eos>"])  # append EOS (should be int(3))
 
         # Set padding length (uncomment following 2 lines for padding)
@@ -107,10 +109,9 @@ class TextKeypointsDataset(data.Dataset):
         sentence += [0] * (padding_length - len(sentence))
         # transform to tensor via ToTensor TODO remove class and implement here?
         if self.transform:
-            keypoints = self.transform(keypoints)
-            keys_per_folder = self.transform(keys_per_folder)
             sentence = self.transform(sentence)
-        return keys_per_folder, sentence
+        # print(sentence)
+        return keys, sentence
 
 
 class ToTensor(object):

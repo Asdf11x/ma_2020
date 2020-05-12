@@ -58,7 +58,10 @@ class DataUtils:
         for sentence in text_array:
             indexes = []
             for word in sentence.split(' '):
-                indexes.append(word2int.get(word))
+                if word in word2int:
+                    indexes.append(word2int.get(word))
+                else:
+                    indexes.append("1")  # <unk>
             text2index.append(indexes)
         return text2index
 

@@ -45,9 +45,13 @@ class TransformerModel(nn.Module):
             device = src.device
             mask = self._generate_square_subsequent_mask(len(src)).to(device)
             self.src_mask = mask
-
+        # print(src.size())
         # src = self.encoder(src) * math.sqrt(self.ninp)
-        src = self.pos_encoder(src)
+        # print(src.size())
+
+        # src = self.pos_encoder(src)
+        print(src.size())
+
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)
         return output
