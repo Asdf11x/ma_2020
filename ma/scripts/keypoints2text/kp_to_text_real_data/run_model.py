@@ -1,13 +1,9 @@
 """
-gru99_model.py:
-https://www.guru99.com/seq2seq-model.html
+run_model.py:
 
-01-04-20:
-features /todos:
-    - kps to text model
-    - remove embedding from input
-    - decoder is the same as original gru99_model.py
-    - reverse from source to target
+- run basic seq2seq, seq2seq with attention and transformer model
+- "framewise": use data_loader_framewise (-1, batch_size, 274), instead of flatten input
+- if necessary use run_model.py path_to_hparams
 
 """
 
@@ -26,15 +22,15 @@ from nltk.translate.meteor_score import single_meteor_score
 from rouge import Rouge
 from pathlib import Path
 import json
+import sys
 
 try:
-    from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset, ToTensor
-    from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset, ToTensor
+    from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
     from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
     from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
     from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
     from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
-    from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
+    from keypoints2text.kp_to_text_real_data.save_model import Helper, Save, Mode
 except ImportError:  # server uses different imports than local
     from data_loader_framewise import TextKeypointsDataset, ToTensor
     from model_seq2seq import Encoder, Decoder, Seq2Seq
@@ -48,10 +44,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class RunModel:
 
-    def __init__(self):
-
+    def __init__(self, hparams_path):
+        # set path to harams.json file
+        self.run_helper = Helper()
+        self.run_helper.set_params_path(hparams_path)
         # read settings file, didnt use configparser, because config parser saves everything as string
-        with open("hparams.json") as json_file:
+        with open(hparams_path) as json_file:
             config = json.load(json_file)
 
         # model settings
@@ -63,6 +61,7 @@ class RunModel:
         self.dropout = config["model_settings"]["dropout"]
         self.bidir_encoder = config["model_settings"]["bidirectional_encoder"]
         self.batch_size = config["model_settings"]["batch_size"]
+        self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
 
         # train settings
         self.use_epochs = config["train_settings"]["use_epochs"]  # 0: time, 1: epochs
@@ -155,7 +154,7 @@ class RunModel:
 
         # Create new folder if no path to a model is specified
         if self.load_model_path == "":
-            self.current_folder = Helper().create_run_folder(self.save_model_folder_path)
+            self.current_folder = self.run_helper.create_run_folder(self.save_model_folder_path)
         else:
             self.current_folder = os.path.dirname(self.load_model_path)
 
@@ -199,7 +198,8 @@ class RunModel:
             path_to_csv=self.path_to_csv_val,
             path_to_vocab_file=self.path_to_vocab_file_val,
             transform=ToTensor())
-        self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True, num_workers=0)
+        self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True,
+                                                           num_workers=0)
 
         #
         # text2kp_test = TextKeypointsDataset(
@@ -214,7 +214,6 @@ class RunModel:
         # model options: "basic", "attn", "trans"
         self.writer = SummaryWriter(self.current_folder)
         self.plotter = {"train_loss": [], "val_loss": []}
-        self.model_type = "trans"
         if self.model_type == "basic":
             self.model = self.init_model(self.input_size, self.output_dim, self.hidden_size,
                                          self.num_layers, self.SOS_token, self.EOS_token)
@@ -238,7 +237,7 @@ class RunModel:
         self.writer.close()
 
         # save graph after training
-        Helper().save_graph(self.current_folder, self.plotter)
+        self.run_helper.save_graph(self.current_folder, self.plotter)
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
@@ -255,8 +254,8 @@ class RunModel:
         model = Seq2Seq(encoder, decoder, device, SOS_token, EOS_token).to(device)
         return model
 
-    def init_model_attn(self, input_dim, output_dim, hidden_dim, num_layers, dropout, teacher_forcing, max_length, bi_encoder,
-                        SOS_token, EOS_token):
+    def init_model_attn(self, input_dim, output_dim, hidden_dim, num_layers, dropout, teacher_forcing, max_length,
+                        bi_encoder, SOS_token, EOS_token):
         # create encoder-decoder model with attention
         encoder = AttnEncoder(input_dim, hidden_dim, num_layers, bi_encoder)
         decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers, dropout, max_length, bi_encoder)
@@ -282,7 +281,11 @@ class RunModel:
         """
         self.model.train()
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
-        criterion = nn.CrossEntropyLoss()
+
+        if self.model_type == "trans":
+            criterion = nn.CrossEntropyLoss()
+        else:
+            criterion = nn.NLLLoss()
 
         time_run = time.time()  # start taking time to show on print
         time_save = time.time()  # start taking time to show on save
@@ -297,7 +300,6 @@ class RunModel:
         val_loss_show = 0
         val_loss_save = 0
         it_val = iter(val_loader)
-
 
         if self.use_epochs == 1:
             remaining = 1
@@ -385,8 +387,13 @@ class RunModel:
                 # data[0].size(0): 15
                 # data[1].size(): (batchsize=1, words=3) => [1, 3]
                 # data[1].size(0): 3
-                source_tensor = torch.as_tensor(data[0], dtype=torch.float, device=device).view(-1, self.batch_size, 274)
-                target_tensor = torch.as_tensor(data[1], dtype=torch.float, device=device).view(-1, self.batch_size)
+
+                source_tensor = torch.as_tensor(
+                    data[0], dtype=torch.float, device=device).view(-1, self.batch_size, 274)
+                if self.model_type == "trans":
+                    target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1)
+                else:
+                    target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1, self.batch_size)
 
                 source_tensor_size = source_tensor.size(0)
                 target_tensor_size = target_tensor.size(0)
@@ -395,7 +402,7 @@ class RunModel:
                     break
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 data_iterator = iter(data_loader)
-        return data
+        return source_tensor, target_tensor
 
     def train_model(self, train_data, model_optimizer, criterion):
         """
@@ -411,64 +418,91 @@ class RunModel:
         target_tensor = train_data[1]
 
         model_optimizer.zero_grad()
+        loss = 0.0
         epoch_loss = 0.0
+        if self.model_type == "trans":
+            output = self.model(source_tensor)
+            print("target_tensor.size() %s" % str(target_tensor.size()))
+            loss = criterion(output.view(-1, self.output_dim), target_tensor)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
+            model_optimizer.step()
+            epoch_loss += loss.item()
 
-        output = self.model(source_tensor)
-        print("target_tensor.size() %s" % str(target_tensor.size()))
-        loss = criterion(output.view(-1, 176), target_tensor)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
-        model_optimizer.step()
-
-        epoch_loss += loss.item()
+        else:
+            output = self.model(source_tensor, target_tensor)
+            num_iter = output.size(0)
+            # calculate the loss from a predicted sentence with the expected result
+            for ot in range(num_iter):  # creating user warning of tensor
+                loss += criterion(output[ot], target_tensor[ot])
+            loss.backward()
+            model_optimizer.step()
+            epoch_loss = loss.item() / num_iter
         return epoch_loss
 
     def val_model(self, data, criterion):
         """Validate model during train runtime"""
+        loss = 0.0
         epoch_loss = 0.0
         self.model.eval()  # Turn on the evaluation mode
         with torch.no_grad():
-            source_tensor = torch.as_tensor(data[0], dtype=torch.float, device=device).view(-1, self.batch_size, 274)
-            target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1)
+            source_tensor = data[0]
+            target_tensor = data[1]
 
-            output = self.model(source_tensor)
-            print("target_tensor.size() %s" % str(target_tensor.size()))
-            loss = criterion(output.view(-1, 176), target_tensor)
-            epoch_loss += loss.item()
+            if self.model_type == "trans":
+                output = self.model(source_tensor)
+                print("target_tensor.size() %s" % str(target_tensor.size()))
+                loss = criterion(output.view(-1, 176), target_tensor)
+                epoch_loss += loss.item()
+            else:
+                output = self.model(source_tensor, target_tensor)
+                num_iter = output.size(0)
+                # calculate the loss from a predicted sentence with the expected result
+                for ot in range(num_iter):  # creating user warning of tensor
+                    loss += criterion(output[ot], target_tensor[ot])
+                epoch_loss = loss.item() / num_iter
+
         return epoch_loss
 
     def evaluate_model_own(self, keypoints_loader):
         """
-        Evaluate Model after trainign and print example sentences
+        Evaluate Model after training and print example sentences
         
         :param keypoints_loader: 
         :return: 
         """""
-        self.model.eval()  # Turn on the evaluation mode
         it = iter(keypoints_loader)
         rouge = Rouge()
         for idx in range(1, self.num_iteration_eval + 1):
             iterator_data = self.load_data(it, keypoints_loader)
 
             with torch.no_grad():
-                in_ten = torch.as_tensor(iterator_data[0], dtype=torch.float, device=device).view(-1, self.batch_size, 274)
-                out_ten = torch.as_tensor(iterator_data[1], dtype=torch.long, device=device).view(-1)
+
+                source_tensor = iterator_data[0]
+                target_tensor = iterator_data[1]
                 print("---" * 10)
 
                 flat_list = []  # sentence representation in int
-                for sublist in out_ten.tolist():
-                    flat_list.append(sublist)
+                if self.model_type == "trans":
+                    for sublist in target_tensor.tolist():
+                        flat_list.append(sublist)
+                else:
+                    for sublist in target_tensor.tolist():
+                        for item in sublist:
+                            flat_list.append(item)
 
                 hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
                 hypothesis = list(filter("<pad>".__ne__, hypothesis))
                 hypothesis = list(filter("<eos>".__ne__, hypothesis))
-
                 hyp_str = " ".join(hypothesis)
 
-                print("in_ten.size: %d, out_ten.size: %d" % (in_ten.size()[0], out_ten.size()[0]))
+                print("source_tensor.size: %d, target_tensor.size: %d" % (
+                    source_tensor.size()[0], target_tensor.size()[0]))
                 decoded_words = []
-
-                output = self.model(in_ten)
+                if self.model_type == "trans":
+                    output = self.model(source_tensor)
+                else:
+                    output = self.model(source_tensor, target_tensor)
                 print("---" * 10)
                 for ot in range(output.size(0)):
                     topv, topi = output[ot].topk(1)
@@ -478,10 +512,10 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                reference = DataUtils().int2text(decoded_words, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                reference = DataUtils().int2text(decoded_words,
+                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_train))
                 reference = list(filter("<pad>".__ne__, reference))
                 reference = list(filter("<eos>".__ne__, reference))
-
                 ref_str = " ".join(reference)
 
                 # if len(hypothesis) >= 4 or len(reference) >= 4:
@@ -491,7 +525,6 @@ class RunModel:
                 bleu3_score = round(sentence_bleu([reference], hypothesis, weights=(0.33, 0.33, 0.33, 0)), 4)
                 bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
                 meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
-                # print(rouge.get_scores(hyp_str, ref_str))
                 try:
                     rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
                 except ValueError:
@@ -522,17 +555,17 @@ class RunModel:
 
             # save in new file and model
             if save == Save.new:
-                self.save_model_file_path = Helper().save_model(self.model, self.current_folder,
-                                                                self.save_model_file_path,
-                                                                self.documentation, self.save_state, mode,
-                                                                self.path_to_csv_train, self.path_to_csv_val,
-                                                                self.path_to_csv_test)
+                self.save_model_file_path = self.run_helper.save_model(self.model, self.current_folder,
+                                                                       self.save_model_file_path,
+                                                                       self.documentation, self.save_state, mode,
+                                                                       self.path_to_csv_train, self.path_to_csv_val,
+                                                                       self.path_to_csv_test)
                 self.save_state = Save.update
 
             # update file and model
             else:
-                Helper().save_model(self.model, self.current_folder, self.save_model_file_path,
-                                    self.documentation, self.save_state, mode)
+                self.run_helper.save_model(self.model, self.current_folder, self.save_model_file_path,
+                                           self.documentation, self.save_state, mode)
 
             # reset variables
             self.documentation = {"epochs_total": 0,
@@ -548,5 +581,10 @@ class RunModel:
 
 
 if __name__ == '__main__':
-    runny = RunModel()
+    # set path to file containing all parameters
+    if len(sys.argv) > 1:
+        hparams_path = str(sys.argv[1])
+    else:
+        hparams_path = "hparams.json"
+    runny = RunModel(hparams_path)
     runny.main()

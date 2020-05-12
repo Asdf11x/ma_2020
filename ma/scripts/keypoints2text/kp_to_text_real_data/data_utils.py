@@ -116,7 +116,7 @@ class DataUtils:
                 iterator_data = next(it)
             except StopIteration:  # if StopIteration is raised, all data of a loader is used
                 break
-            source_ten_len = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1).size()[0]
+            source_ten_len = torch.as_tensor(iterator_data[0], dtype=torch.float).view(-1, 1, 274).size()[0]
             target_ten_len = torch.as_tensor(iterator_data[1], dtype=torch.long).view(-1, 1).size()[0]
 
             if source_ten_len > kp_max:

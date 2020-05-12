@@ -19,10 +19,10 @@ import torch.utils
 import torch.utils.data
 import os
 import time
-from keypoints2text.kp_to_text_real_data.flat_input.data_loader_flat import TextKeypointsDataset, ToTensor
+from keypoints2text.kp_to_text_real_data.other_input.data_loader_flat import TextKeypointsDataset, ToTensor
 from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
 from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
-from keypoints2text.kp_to_text_real_data.run_model_helper import Helper, Save, Mode
+from keypoints2text.kp_to_text_real_data.save_model import Helper, Save, Mode
 import datetime
 import nltk
 from pathlib import Path

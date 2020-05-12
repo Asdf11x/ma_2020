@@ -10,8 +10,8 @@ import torch.utils
 import torch.utils.data
 from matplotlib import pyplot as plt
 try:
-    from keypoints2text.kp_to_text_real_data.data_loader_framewise import TextKeypointsDataset
-    from keypoints2text.kp_to_text_real_data.data_loader_framewise import ToTensor
+    from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset
+    from keypoints2text.kp_to_text_real_data.data_loader import ToTensor
 except ImportError:  # server uses different imports than local
     from data_loader_framewise import TextKeypointsDataset
     from data_loader_framewise import ToTensor
@@ -24,8 +24,8 @@ class PrintDataset:
         # load Dataset, Dataloader and Iterator
         text2kp = TextKeypointsDataset(
             path_to_numpy_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy",
-            path_to_csv=r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\data\text\3_linked_to_npy\how2sign.test.id_transformed.txt_2npy.txt",
-            path_to_vocab_file=r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\data\text\1_vocab_list\how2sign.test.id_vocab.txt",
+            path_to_csv=r"/keypoints2text/data/text/3_linked_to_npy/how2sign.test.id_transformed.txt_2npy.txt",
+            path_to_vocab_file=r"/keypoints2text/data/text/1_vocab_list/how2sign.test.id_vocab.txt",
             transform=ToTensor())
 
         keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)

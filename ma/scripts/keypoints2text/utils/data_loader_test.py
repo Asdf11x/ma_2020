@@ -5,13 +5,17 @@ kps_to_text_test.py: Test and print the computed data from kps_to_text_dataset.p
 - use .csv file (containing the connection between text <-> keypoint folder)
 """
 
-from keypoints2text.kp_to_text_real_data.flat_input.data_loader_flat import TextKeypointsDataset
-from keypoints2text.kp_to_text_real_data.flat_input.data_loader_flat import ToTensor
+
 import torch
 import torch.utils
 import torch.utils.data
 from matplotlib import pyplot as plt
-
+try:
+    from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset
+    from keypoints2text.kp_to_text_real_data.data_loader import ToTensor
+except ImportError:  # server uses different imports than local
+    from data_loader_framewise import TextKeypointsDataset
+    from data_loader_framewise import ToTensor
 
 class PrintDataset:
 
@@ -23,8 +27,6 @@ class PrintDataset:
             path_to_numpy_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy",
             path_to_csv=r"/keypoints2text/data/text/3_linked_to_npy/how2sign.test.id_transformed.txt_2npy.txt",
             path_to_vocab_file=r"/keypoints2text/data/text/1_vocab_list/how2sign.test.id_vocab.txt",
-            kp_max_len=120000,
-            text_max_len=120,
             transform=ToTensor())
 
         keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)

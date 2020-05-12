@@ -1,5 +1,5 @@
 """
-run_model_helper.py: contains methods not directly involved in training/evaluating the model
+save_model.py: contains methods not directly involved in training/evaluating the model
 """
 
 import os

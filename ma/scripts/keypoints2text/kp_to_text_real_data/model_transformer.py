@@ -3,12 +3,10 @@ model_seq2seq.py: Implement the basic seq2seq model
 """
 
 from __future__ import unicode_literals, division
-import random
 import torch
 import torch.nn as nn
 import torch.utils
 import torch.utils.data
-import torch.nn.functional as F
 import math
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
