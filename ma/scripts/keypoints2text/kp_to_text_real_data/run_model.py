@@ -26,18 +26,20 @@ import sys
 
 try:
     from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
-    from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
+    # from keypoints2text.kp_to_text_real_data.model_seq2seq import Encoder, Decoder, Seq2Seq
     from keypoints2text.kp_to_text_real_data.model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
+    from keypoints2text.kp_to_text_real_data.model_seq2seq_attention_batches import Encoder, Seq2Seq, Decoder, Attention
     from keypoints2text.kp_to_text_real_data.model_transformer import TransformerModel
     from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
     from keypoints2text.kp_to_text_real_data.save_model import Helper, Save, Mode
 except ImportError:  # server uses different imports than local
-    from data_loader_framewise import TextKeypointsDataset, ToTensor
-    from model_seq2seq import Encoder, Decoder, Seq2Seq
+    from data_loader import TextKeypointsDataset, ToTensor
+    # from model_seq2seq import Encoder, Decoder, Seq2Seq
     from model_seq2seq_attention import AttnEncoder, AttnDecoderRNN, AttnSeq2Seq
+    from model_seq2seq_attention_batches import Encoder, Seq2Seq, Decoder, Attention
     from model_transformer import TransformerModel
     from data_utils import DataUtils
-    from run_model_helper import Helper, Save, Mode
+    from save_model import Helper, Save, Mode
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -54,10 +56,11 @@ class RunModel:
 
         # model settings
         self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
-        self.input_size = config["model_settings"]["input_size"] * config["model_settings"]["batch_size"]
+        self.input_size = config["model_settings"]["input_size"]
         self.hidden_size = config["model_settings"]["hidden_size"]
         self.num_layers = config["model_settings"]["num_layers"]
         self.max_length = config["model_settings"]["max_length"]
+        self.padding = config["model_settings"]["padding"]
         self.dropout = config["model_settings"]["dropout"]
         self.bidir_encoder = config["model_settings"]["bidirectional_encoder"]
         self.batch_size = config["model_settings"]["batch_size"]
@@ -163,7 +166,9 @@ class RunModel:
             path_to_numpy_file=self.path_to_numpy_file_train,
             path_to_csv=self.path_to_csv_train,
             path_to_vocab_file=self.path_to_vocab_file_train,
-            transform=ToTensor())
+            transform=ToTensor(),
+            kp_max_len=self.padding,
+            text_max_len=self.padding)
         self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
                                                              num_workers=0)
 
@@ -197,8 +202,20 @@ class RunModel:
             path_to_numpy_file=self.path_to_numpy_file_val,
             path_to_csv=self.path_to_csv_val,
             path_to_vocab_file=self.path_to_vocab_file_val,
-            transform=ToTensor())
+            transform=ToTensor(),
+            kp_max_len=self.padding,
+            text_max_len=self.padding)
         self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True,
+                                                           num_workers=0)
+
+        text2kp_val_eval = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_val,
+            path_to_csv=self.path_to_csv_val,
+            path_to_vocab_file=self.path_to_vocab_file_val,
+            transform=ToTensor(),
+            kp_max_len=self.padding,
+            text_max_len=self.padding)
+        self.data_loader_val_eval = torch.utils.data.DataLoader(text2kp_val, 1, shuffle=True,
                                                            num_workers=0)
 
         #
@@ -213,17 +230,26 @@ class RunModel:
 
         # model options: "basic", "attn", "trans"
         self.writer = SummaryWriter(self.current_folder)
+        # self.writer.add_hparams(config)
         self.plotter = {"train_loss": [], "val_loss": []}
-        if self.model_type == "basic":
-            self.model = self.init_model(self.input_size, self.output_dim, self.hidden_size,
-                                         self.num_layers, self.SOS_token, self.EOS_token)
-        elif self.model_type == "attn":
-            self.model = self.init_model_attn(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
-                                              self.dropout, self.teacher_forcing_ratio, self.max_length,
-                                              self.bidir_encoder, self.SOS_token,
-                                              self.EOS_token)
-        elif self.model_type == "trans":
-            self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.num_layers)
+
+        # Do not initialize model, if its loaded from a file
+        if self.load_model == 0:
+            if self.model_type == "basic":
+                self.model = self.init_model(self.input_size, self.output_dim, self.hidden_size,
+                                             self.num_layers, self.SOS_token, self.EOS_token)
+            elif self.model_type == "attn":
+                self.model = self.init_model_attn(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
+                                                  self.dropout, self.teacher_forcing_ratio, self.max_length,
+                                                  self.bidir_encoder, self.batch_size, self.SOS_token, self.EOS_token)
+            elif self.model_type == "attn_batch":
+                self.model = self.init_model_attn_batch(self.input_size, self.output_dim, self.hidden_size,
+                                                        self.num_layers,
+                                                        self.dropout, self.teacher_forcing_ratio, self.max_length,
+                                                        self.bidir_encoder, self.batch_size, self.SOS_token,
+                                                        self.EOS_token)
+            elif self.model_type == "trans":
+                self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.num_layers)
 
     def main(self):
         # check if model should be loaded or not. Loads model if model_file_path is set
@@ -241,7 +267,7 @@ class RunModel:
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
-            self.evaluate_model_own(self.data_loader_val)
+            self.evaluate_model_own(self.data_loader_val_eval)
 
         # check if model should be evaluated or not (test set)
         if self.test_model:
@@ -251,15 +277,34 @@ class RunModel:
         # create encoder-decoder model
         encoder = Encoder(input_dim, hidden_dim, num_layers)
         decoder = Decoder(output_dim, hidden_dim, num_layers)
+        if device == "cuda":
+            encoder = encoder.cuda()
+            decoder = decoder.cuda()
         model = Seq2Seq(encoder, decoder, device, SOS_token, EOS_token).to(device)
         return model
 
     def init_model_attn(self, input_dim, output_dim, hidden_dim, num_layers, dropout, teacher_forcing, max_length,
-                        bi_encoder, SOS_token, EOS_token):
+                        bi_encoder, batch_size, SOS_token, EOS_token):
         # create encoder-decoder model with attention
-        encoder = AttnEncoder(input_dim, hidden_dim, num_layers, bi_encoder)
-        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers, dropout, max_length, bi_encoder)
-        model = AttnSeq2Seq(encoder, decoder, device, teacher_forcing, max_length, SOS_token, EOS_token).to(device)
+        encoder = AttnEncoder(input_dim, hidden_dim, num_layers, bi_encoder, batch_size)
+        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers, dropout, max_length, bi_encoder, batch_size)
+        if device == "cuda":
+            encoder = encoder.cuda()
+            decoder = decoder.cuda()
+        model = AttnSeq2Seq(encoder, decoder, device, teacher_forcing, max_length, batch_size, SOS_token, EOS_token).to(
+            device)
+        return model
+
+    def init_model_attn_batch(self, input_dim, output_dim, hidden_dim, num_layers, dropout, teacher_forcing, max_length,
+                              bi_encoder, batch_size, SOS_token, EOS_token):
+        # create encoder-decoder model with attention
+        encoder = Encoder(input_dim, hidden_dim, hidden_dim, dropout, batch_size)
+        attention= Attention(hidden_dim, hidden_dim)
+        decoder = Decoder(attention, output_dim, output_dim, hidden_dim, hidden_dim, dropout)
+        if device == "cuda":
+            encoder = encoder.cuda()
+            decoder = decoder.cuda()
+        model = Seq2Seq(encoder, decoder, device).to(device)
         return model
 
     def init_model_trans(self, output_dim, hidden_dim, num_layers):
@@ -281,11 +326,14 @@ class RunModel:
         """
         self.model.train()
         model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
+        ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
 
         if self.model_type == "trans":
-            criterion = nn.CrossEntropyLoss()
-        else:
-            criterion = nn.NLLLoss()
+            criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        elif self.model_type == "attn":
+            criterion = nn.NLLLoss(ignore_index=ignore_index)
+        elif self.model_type == "attn_batch":
+            criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
 
         time_run = time.time()  # start taking time to show on print
         time_save = time.time()  # start taking time to show on save
@@ -312,22 +360,26 @@ class RunModel:
         while remaining <= end:
 
             train_data = self.load_data(it_train, train_loader)
+            # print(train_data)
             train_loss = self.train_model(train_data, model_optimizer, criterion)
             train_loss_show += train_loss
             train_loss_save += train_loss
 
             val_data = self.load_data(it_val, val_loader)
+            # print(val_data)
             val_loss = self.val_model(val_data, criterion)
             val_loss_show += val_loss
             val_loss_save += val_loss
 
-            # save for plotting
-            self.plotter["train_loss"].append(train_loss)
-            self.plotter["val_loss"].append(val_loss)
-
-            # add to tensorboard
+            # add losses to tensorboard
             self.writer.add_scalar('Loss/train', train_loss, idx_epoch)
             self.writer.add_scalar('Loss/val', val_loss, idx_epoch)
+
+            if idx_epoch % 1 == 0 and self.model_type == "attn":
+                if self.model.teacher_forcing > 0.0:
+                    self.model.teacher_forcing -= 0.1
+                else:
+                    self.model.teacher_forcing = 0
 
             if idx_epoch % self.show_every == 0:
                 elapsed_time_s = time.time() - time_run
@@ -345,12 +397,17 @@ class RunModel:
                     print('Remaining time: %s' % str(datetime.timedelta(seconds=remaining_time)))
 
             if idx_epoch % self.save_every == 0:
+                # save for plotting
                 elapsed_time_s = time.time() - time_save
                 train_avg_loss = train_loss_save / self.save_every
                 train_loss_save = 0
 
                 val_avg_loss = val_loss_save / self.save_every
                 val_loss_save = 0
+
+                # add losses to own graph
+                self.plotter["train_loss"].append(train_avg_loss)
+                self.plotter["val_loss"].append(val_avg_loss)
 
                 print('Saving at epoch %d, average loss: %.2f' % (idx_epoch, train_avg_loss))
 
@@ -394,7 +451,7 @@ class RunModel:
                     target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1)
                 else:
                     target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1, self.batch_size)
-
+                # print(target_tensor)
                 source_tensor_size = source_tensor.size(0)
                 target_tensor_size = target_tensor.size(0)
 
@@ -428,16 +485,39 @@ class RunModel:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
             model_optimizer.step()
             epoch_loss += loss.item()
-
-        else:
+        elif self.model_type == "attn":
             output = self.model(source_tensor, target_tensor)
             num_iter = output.size(0)
             # calculate the loss from a predicted sentence with the expected result
-            for ot in range(num_iter):  # creating user warning of tensor
+            for ot in range(num_iter):
                 loss += criterion(output[ot], target_tensor[ot])
             loss.backward()
             model_optimizer.step()
             epoch_loss = loss.item() / num_iter
+        elif self.model_type == "attn_batch":
+            output = self.model(source_tensor, target_tensor)
+
+            # trg = [trg len, batch size]
+            # output = [trg len, batch size, output dim]
+
+            output_dim = output.shape[-1]
+
+            output = output[1:].view(-1, output_dim)
+            trg = target_tensor[1:].view(-1)
+
+            # trg = [(trg len - 1) * batch size]
+            # output = [(trg len - 1) * batch size, output dim]
+
+            loss = criterion(output, trg)
+
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0, 5)
+
+            model_optimizer.step()
+
+            epoch_loss += loss.item()
+
         return epoch_loss
 
     def val_model(self, data, criterion):
@@ -454,13 +534,30 @@ class RunModel:
                 print("target_tensor.size() %s" % str(target_tensor.size()))
                 loss = criterion(output.view(-1, 176), target_tensor)
                 epoch_loss += loss.item()
-            else:
+            elif self.model_type == "attn":
                 output = self.model(source_tensor, target_tensor)
                 num_iter = output.size(0)
                 # calculate the loss from a predicted sentence with the expected result
                 for ot in range(num_iter):  # creating user warning of tensor
                     loss += criterion(output[ot], target_tensor[ot])
                 epoch_loss = loss.item() / num_iter
+            elif self.model_type == "attn_batch":
+                output = self.model(source_tensor, target_tensor, 0)  # turn off teacher forcing
+
+                # trg = [trg len, batch size]
+                # output = [trg len, batch size, output dim]
+
+                output_dim = output.shape[-1]
+
+                output = output[1:].view(-1, output_dim)
+                trg = target_tensor[1:].view(-1)
+
+                # trg = [(trg len - 1) * batch size]
+                # output = [(trg len - 1) * batch size, output dim]
+
+                loss = criterion(output, trg)
+
+                epoch_loss += loss.item()
 
         return epoch_loss
 

@@ -24,8 +24,8 @@ class TextKeypointsDataset(data.Dataset):
     Characterizes a dataset for PyTorch
     """
 
-    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None, kp_max_len=300,
-                 text_max_len=300):
+    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None, kp_max_len=0,
+                 text_max_len=0):
         self.path_to_numpy_file = path_to_numpy_file
         self.path_to_csv = path_to_csv
         self.path_to_vocab_file = path_to_vocab_file

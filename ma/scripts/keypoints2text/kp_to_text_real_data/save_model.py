@@ -20,7 +20,6 @@ try:
     from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 except ImportError:  # server uses different imports than local
     from data_utils import DataUtils
-    from run_model_framewise import RunModel
 
 
 class Save(Enum):
