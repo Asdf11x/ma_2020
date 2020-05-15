@@ -48,7 +48,7 @@ class TransformerModel(nn.Module):
         # print(src.size())
 
         # src = self.pos_encoder(src)
-        print(src.size())
+        # print(src.size())
 
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)

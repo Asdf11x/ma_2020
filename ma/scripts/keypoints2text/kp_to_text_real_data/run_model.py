@@ -47,12 +47,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class RunModel:
 
     def __init__(self, hparams_path):
-        # set path to harams.json file
-        self.run_helper = Helper()
-        self.run_helper.set_params_path(hparams_path)
+
         # read settings file, didnt use configparser, because config parser saves everything as string
         with open(hparams_path) as json_file:
             config = json.load(json_file)
+
+        # set path to harams.json file
+        self.run_helper = Helper()
+        self.run_helper.set_params(hparams_path, config["model_settings"]["model_type"])
 
         # model settings
         self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
@@ -66,7 +68,13 @@ class RunModel:
         self.batch_size = config["model_settings"]["batch_size"]
         self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
 
+        # trans model settings
+        self.nhead = config["trans_settings"]["nhead"]
+
+
+
         # train settings
+        self.train_model_bool = config["train_settings"]["train_model_bool"]
         self.use_epochs = config["train_settings"]["use_epochs"]  # 0: time, 1: epochs
         self.num_iteration = config["train_settings"]["num_iteration"]
         self.hours = config["train_settings"]["hours"]
@@ -169,8 +177,7 @@ class RunModel:
             transform=ToTensor(),
             kp_max_len=self.padding,
             text_max_len=self.padding)
-        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
-                                                             num_workers=0)
+        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
         # vocab size, amount of different unique words
         if self.output_dim == 0:
@@ -207,26 +214,17 @@ class RunModel:
             text_max_len=self.padding)
         self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True,
                                                            num_workers=0)
-
-        text2kp_val_eval = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_val,
-            path_to_csv=self.path_to_csv_val,
-            path_to_vocab_file=self.path_to_vocab_file_val,
-            transform=ToTensor(),
-            kp_max_len=self.padding,
-            text_max_len=self.padding)
-        self.data_loader_val_eval = torch.utils.data.DataLoader(text2kp_val, 1, shuffle=True,
+        self.data_loader_val_eval = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True,
                                                            num_workers=0)
 
-        #
         # text2kp_test = TextKeypointsDataset(
         #     path_to_numpy_file=self.path_to_numpy_file_test,
         #     path_to_csv=self.path_to_csv_test,
         #     path_to_vocab_file=self.path_to_vocab_file_test,
         #     transform=ToTensor(),
-        #     kp_max_len=self.hidden_size_enc,
-        #     text_max_len=self.hidden_size_dec)
-        # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=1, shuffle=True, num_workers=0)
+        #     kp_max_len=self.padding,
+        #     text_max_len=self.padding)
+        # self.data_loader_test = torch.utils.data.DataLoader(text2kp_test, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
         # model options: "basic", "attn", "trans"
         self.writer = SummaryWriter(self.current_folder)
@@ -241,7 +239,7 @@ class RunModel:
             elif self.model_type == "attn":
                 self.model = self.init_model_attn(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
                                                   self.dropout, self.teacher_forcing_ratio, self.max_length,
-                                                  self.bidir_encoder, self.batch_size, self.SOS_token, self.EOS_token)
+                                                  self.bidir_encoder, self.SOS_token, self.EOS_token)
             elif self.model_type == "attn_batch":
                 self.model = self.init_model_attn_batch(self.input_size, self.output_dim, self.hidden_size,
                                                         self.num_layers,
@@ -249,7 +247,7 @@ class RunModel:
                                                         self.bidir_encoder, self.batch_size, self.SOS_token,
                                                         self.EOS_token)
             elif self.model_type == "trans":
-                self.model = self.init_model_trans(self.output_dim, self.hidden_size, self.num_layers)
+                self.model = self.init_model_trans(self.input_size, self.output_dim, self.hidden_size, self.num_layers, self.nhead, self.dropout)
 
     def main(self):
         # check if model should be loaded or not. Loads model if model_file_path is set
@@ -259,11 +257,12 @@ class RunModel:
 
         # print and train model
         print(self.model)
-        self.train_run(self.data_loader_train, self.data_loader_val, self.num_iteration)
+        if self.train_model_bool:
+            self.train_run(self.data_loader_train, self.data_loader_val, self.num_iteration)
+            # save graph after training
+            self.run_helper.save_graph(self.current_folder, self.plotter)
         self.writer.close()
 
-        # save graph after training
-        self.run_helper.save_graph(self.current_folder, self.plotter)
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
@@ -284,14 +283,14 @@ class RunModel:
         return model
 
     def init_model_attn(self, input_dim, output_dim, hidden_dim, num_layers, dropout, teacher_forcing, max_length,
-                        bi_encoder, batch_size, SOS_token, EOS_token):
+                        bi_encoder, SOS_token, EOS_token):
         # create encoder-decoder model with attention
-        encoder = AttnEncoder(input_dim, hidden_dim, num_layers, bi_encoder, batch_size)
-        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers, dropout, max_length, bi_encoder, batch_size)
+        encoder = AttnEncoder(input_dim, hidden_dim, num_layers, bi_encoder)
+        decoder = AttnDecoderRNN(output_dim, hidden_dim, num_layers, dropout, max_length, bi_encoder)
         if device == "cuda":
             encoder = encoder.cuda()
             decoder = decoder.cuda()
-        model = AttnSeq2Seq(encoder, decoder, device, teacher_forcing, max_length, batch_size, SOS_token, EOS_token).to(
+        model = AttnSeq2Seq(encoder, decoder, device, teacher_forcing, max_length, SOS_token, EOS_token).to(
             device)
         return model
 
@@ -307,13 +306,13 @@ class RunModel:
         model = Seq2Seq(encoder, decoder, device).to(device)
         return model
 
-    def init_model_trans(self, output_dim, hidden_dim, num_layers):
+    def init_model_trans(self, input_dim, output_dim, hidden_dim, num_layers, nhead, dropout):
         ntokens = output_dim  # the size of vocabulary
-        emsize = 274  # embedding dimension
-        nhid = 274  # the dimension of the feedforward network model in nn.TransformerEncoder
-        nlayers = 2  # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
-        nhead = 2  # the number of heads in the multiheadattention models
-        dropout = 0.2  # the dropout value
+        emsize = input_dim  # embedding dimension
+        nhid = hidden_dim  # the dimension of the feedforward network model in nn.TransformerEncoder
+        nlayers = num_layers  # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+        nhead = nhead  # the number of heads in the multiheadattention models
+        dropout = dropout  # the dropout value
         model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
         return model
 
@@ -325,13 +324,15 @@ class RunModel:
         :return:
         """
         self.model.train()
-        model_optimizer = optim.SGD(self.model.parameters(), lr=0.01)
+        lr = 3.0
+        model_optimizer = optim.SGD(self.model.parameters(), lr=lr)
+        scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, 5, gamma=0.95)
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
 
         if self.model_type == "trans":
             criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
         elif self.model_type == "attn":
-            criterion = nn.NLLLoss(ignore_index=ignore_index)
+            criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
         elif self.model_type == "attn_batch":
             criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
 
@@ -360,13 +361,11 @@ class RunModel:
         while remaining <= end:
 
             train_data = self.load_data(it_train, train_loader)
-            # print(train_data)
-            train_loss = self.train_model(train_data, model_optimizer, criterion)
+            train_loss = self.train_model(train_data, model_optimizer, criterion, scheduler)
             train_loss_show += train_loss
             train_loss_save += train_loss
 
             val_data = self.load_data(it_val, val_loader)
-            # print(val_data)
             val_loss = self.val_model(val_data, criterion)
             val_loss_show += val_loss
             val_loss_save += val_loss
@@ -375,10 +374,10 @@ class RunModel:
             self.writer.add_scalar('Loss/train', train_loss, idx_epoch)
             self.writer.add_scalar('Loss/val', val_loss, idx_epoch)
 
-            if idx_epoch % 1 == 0 and self.model_type == "attn":
+            if idx_epoch % int(self.num_iteration / 10) == 0 and self.model_type == "attn":
                 if self.model.teacher_forcing > 0.0:
-                    self.model.teacher_forcing -= 0.1
-                else:
+                    self.model.teacher_forcing -= 0.2
+                if self.model.teacher_forcing < 0.0:
                     self.model.teacher_forcing = 0
 
             if idx_epoch % self.show_every == 0:
@@ -389,8 +388,8 @@ class RunModel:
                 val_avg_loss = val_loss_show / self.show_every
                 val_loss_show = 0
 
-                print('Epoch %d, avg train loss: %.2f, avg eval loss: %.2f, elapsed time: %s'
-                      % (idx_epoch, train_avg_loss, val_avg_loss, str(datetime.timedelta(seconds=int(elapsed_time_s)))))
+                print('Epoch %d, avg t_loss: %.2f, avg v_loss: %.2f, lr: %f, elapsed time: %s'
+                      % (idx_epoch, train_avg_loss, val_avg_loss, scheduler.get_lr()[0], str(datetime.timedelta(seconds=int(elapsed_time_s)))))
 
                 remaining_time = int(time_end - time.time())
                 if time_end != 0.0:
@@ -459,9 +458,11 @@ class RunModel:
                     break
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 data_iterator = iter(data_loader)
+            except RuntimeError:
+                data_iterator = iter(data_loader)
         return source_tensor, target_tensor
 
-    def train_model(self, train_data, model_optimizer, criterion):
+    def train_model(self, train_data, model_optimizer, criterion, scheduler):
         """
         the inner most method to train the model, the actual training is implemented here
         :param source_tensor:
@@ -479,7 +480,7 @@ class RunModel:
         epoch_loss = 0.0
         if self.model_type == "trans":
             output = self.model(source_tensor)
-            print("target_tensor.size() %s" % str(target_tensor.size()))
+            # print("target_tensor.size() %s" % str(target_tensor.size()))
             loss = criterion(output.view(-1, self.output_dim), target_tensor)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
@@ -487,13 +488,28 @@ class RunModel:
             epoch_loss += loss.item()
         elif self.model_type == "attn":
             output = self.model(source_tensor, target_tensor)
-            num_iter = output.size(0)
-            # calculate the loss from a predicted sentence with the expected result
-            for ot in range(num_iter):
-                loss += criterion(output[ot], target_tensor[ot])
+
+            # trg = [trg len, batch size]
+            # output = [trg len, batch size, output dim]
+
+            output_dim = output.shape[-1]
+
+            output = output.view(-1, output_dim)
+            trg = target_tensor.view(-1)
+
+            # trg = [(trg len - 1) * batch size]
+            # output = [(trg len - 1) * batch size, output dim]
+
+            loss = criterion(output, trg)
+
             loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
+
             model_optimizer.step()
-            epoch_loss = loss.item() / num_iter
+
+            epoch_loss += loss.item()
+
         elif self.model_type == "attn_batch":
             output = self.model(source_tensor, target_tensor)
 
@@ -512,12 +528,13 @@ class RunModel:
 
             loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0, 5)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
 
             model_optimizer.step()
 
             epoch_loss += loss.item()
 
+        scheduler.step()
         return epoch_loss
 
     def val_model(self, data, criterion):
@@ -531,16 +548,16 @@ class RunModel:
 
             if self.model_type == "trans":
                 output = self.model(source_tensor)
-                print("target_tensor.size() %s" % str(target_tensor.size()))
-                loss = criterion(output.view(-1, 176), target_tensor)
+                # print("target_tensor.size() %s" % str(target_tensor.size()))
+                loss = criterion(output.view(-1, self.output_dim), target_tensor)
                 epoch_loss += loss.item()
             elif self.model_type == "attn":
                 output = self.model(source_tensor, target_tensor)
-                num_iter = output.size(0)
-                # calculate the loss from a predicted sentence with the expected result
-                for ot in range(num_iter):  # creating user warning of tensor
-                    loss += criterion(output[ot], target_tensor[ot])
-                epoch_loss = loss.item() / num_iter
+                output_dim = output.shape[-1]
+                output = output.view(-1, output_dim)
+                trg = target_tensor.view(-1)
+                loss = criterion(output, trg)
+                epoch_loss = loss.item()
             elif self.model_type == "attn_batch":
                 output = self.model(source_tensor, target_tensor, 0)  # turn off teacher forcing
 
@@ -571,6 +588,8 @@ class RunModel:
         it = iter(keypoints_loader)
         rouge = Rouge()
         for idx in range(1, self.num_iteration_eval + 1):
+            self.batch_size = 1
+            self.model.encoder.batch_size = 1
             iterator_data = self.load_data(it, keypoints_loader)
 
             with torch.no_grad():
@@ -578,6 +597,8 @@ class RunModel:
                 source_tensor = iterator_data[0]
                 target_tensor = iterator_data[1]
                 print("---" * 10)
+
+
 
                 flat_list = []  # sentence representation in int
                 if self.model_type == "trans":

@@ -7,8 +7,8 @@ import psutil
 old = np.load
 np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
 
-path_to_numpy_files = Path(sys.argv[1])
-# path_to_numpy_files = Path(r"/home/...")
+# path_to_numpy_files = Path(sys.argv[1])
+path_to_numpy_files = Path(r"C:\Users\Asdf\Downloads\How2Sign_samples")
 numpy_files = [pos_json for pos_json in os.listdir(path_to_numpy_files) if pos_json.endswith('.npy')]
 
 process = psutil.Process(os.getpid())

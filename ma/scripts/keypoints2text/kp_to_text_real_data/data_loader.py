@@ -13,6 +13,7 @@ from torch.utils import data
 import pandas as pd
 import numpy as np
 import numbers
+import random
 try:
     from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 except ImportError:  # server uses different imports than local
@@ -53,6 +54,10 @@ class TextKeypointsDataset(data.Dataset):
 
         # load vocab dictionaries
         self.word2int = DataUtils().vocab_word2int(self.path_to_vocab_file)  # e.g. print: 'who': 0
+
+        # get amount of data
+        self.amount_of_files = DataUtils().get_file_length(self.path_to_csv)
+
         np.load = old  # reset np.load back or pickle error
 
     def __len__(self):
@@ -68,30 +73,44 @@ class TextKeypointsDataset(data.Dataset):
         """
         # init keypoints
         keypoints = []
-
-        # get specific subdirectory corresponding to the index
-        subdirectory = self.saved_column_kp[index]
-
-        keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
         keys_per_folder = []
+        while 1:
 
-        for file in self.all_files[subdirectory]:
-            temp_df = self.all_files[subdirectory][file]
-            # init dictionaries & write x, y values into dictionary
-            keys_x = []
-            keys_y = []
-            for k in keys:
-                keys_x.extend(temp_df['people'][0][k][0::3])
-                keys_y.extend(temp_df['people'][0][k][1::3])
-            keys_per_folder.append(keys_x + keys_y)
+            # get specific subdirectory corresponding to the index
+            subdirectory = self.saved_column_kp[index]
 
-        if self.transform:
-            keys_per_folder = self.transform(keys_per_folder)
+            keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
+            keys_per_folder = []
+
+            for file in self.all_files[subdirectory]:
+                temp_df = self.all_files[subdirectory][file]
+                # init dictionaries & write x, y values into dictionary
+                keys_x = []
+                keys_y = []
+                for k in keys:
+                    keys_x.extend(temp_df['people'][0][k][0::3])
+                    keys_y.extend(temp_df['people'][0][k][1::3])
+                keys_per_folder.append(keys_x + keys_y)
+
+            if self.transform:
+                keys_per_folder = self.transform(keys_per_folder)
+
+            if self.kp_max_len == 0:
+                break
+
+            if keys_per_folder.size(0) <= self.kp_max_len:
+                break
+            else:
+                index = random.randint(0, self.amount_of_files-2)
 
         # keypoints padding
         if self.kp_max_len > 0:
+            if self.kp_max_len < keys_per_folder.size(0):
+                temp_max_len = keys_per_folder.size(0)
+            else:
+                temp_max_len = self.kp_max_len
             length = keys_per_folder.size(0)
-            keys = torch.zeros(self.kp_max_len, 274)
+            keys = torch.zeros(temp_max_len, 274)
             source = keys_per_folder
             keys[:length, :] = source
         else:

@@ -40,9 +40,11 @@ class Helper:
         self.eval_info = "eval_info.txt"
         self.model_name = "model.pt"
         self.hparams_path = ""
+        self.model_type = ""
 
-    def set_params_path(self, hparams_path):
+    def set_params(self, hparams_path, model_type):
         self.hparams_path = hparams_path
+        self.model_type = model_type
 
     def create_run_folder(self, save_model_folder_path):
         """
@@ -157,6 +159,9 @@ class Helper:
         x = np.linspace(0, len(train), len(train))
         plt.plot(x, train, label="train")
         plt.plot(x, val, label="val")
+        plt.title("Signs2Text - %s model" %self.model_type)
+        plt.ylabel("crossentropy loss")
+        plt.xlabel("epochs")
         plt.legend()
         # plt.show()
         save_graph = "train_val_loss_%d.png" % len(plotter["train_loss"])
