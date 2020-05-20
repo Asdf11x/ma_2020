@@ -23,6 +23,10 @@ from rouge import Rouge
 from pathlib import Path
 import json
 import sys
+from statistics import mean
+import warnings
+
+warnings.filterwarnings("ignore")
 
 try:
     from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
@@ -138,7 +142,8 @@ class RunModel:
                               "time_total_readable": "",
                               "train_loss": [],
                               "val_loss": [],
-                              "tloss_vloss_time_epoch": [],
+                              "lr": [],
+                              "tloss_vloss_lr_time_epoch": [],
                               "hypothesis": [],
                               "reference": [],
                               "Epoch_BLEU1-4_METEOR_ROUGE": [],
@@ -167,6 +172,7 @@ class RunModel:
         # TODO: crop max input_dim?
         # self.input_dim = config["padding"]["input_dim"]  # length of source keypoints
         self.output_dim = config["padding"]["output_dim"]  # output_dim != max_length. max_length == hidden_size
+        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
         # Create new folder if no path to a model is specified
         if self.load_model_path == "":
@@ -273,11 +279,11 @@ class RunModel:
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
-            self.evaluate_model_own(self.data_loader_val_eval)
+            self.evaluate_model_metrics(self.data_loader_val_eval, 1)
 
         # check if model should be evaluated or not (test set)
         if self.test_model:
-            self.evaluate_model_own(self.data_loader_test)
+            self.evaluate_model_metrics(self.data_loader_test)
 
     def init_model(self, input_dim, output_dim, hidden_dim, num_layers, SOS_token, EOS_token):
         # create encoder-decoder model
@@ -333,9 +339,9 @@ class RunModel:
         self.model.train()
         lr = self.learning_rate
         model_optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        # lr_scheduler.StepLR(optim, each_step, factor)
-        scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, 5, gamma=0.95)
-        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=250)
+        scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, 10,
+                                                    gamma=0.95)  # lr_scheduler.StepLR(optim, each_step, factor)
+        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=100)
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
 
         # if self.model_type == "trans":
@@ -382,12 +388,19 @@ class RunModel:
             scheduler.step()
             # Note that step should be called after validate()
             scheduler_plat.step(val_loss)
-            # add losses to tensorboard
-            self.writer.add_scalar('Loss/train', train_loss, idx_epoch)
-            self.writer.add_scalar('Loss/val', val_loss, idx_epoch)
 
-            teacher_forcing_reduce = 10 if self.num_iteration / 10 == 0 else self.num_iteration / 10
-            if idx_epoch % int(teacher_forcing_reduce) == 0 and (
+            # add losses to tensorboard
+            self.writer.add_scalars(f'losses', {
+                'train_loss': train_loss,
+                'val_loss': val_loss,
+            }, idx_epoch)
+
+            # num_iteration may not be 0, else error.
+            if self.use_epochs == 0:
+                teacher_forcing_reduce = 250
+            else:
+                teacher_forcing_reduce = self.num_iteration / 10
+            if idx_epoch % int(teacher_forcing_reduce if teacher_forcing_reduce != 0 else 100) == 0 and (
                     self.model_type == "attn" or self.model_type == "attn_batch"):
                 if self.model.teacher_forcing > 0.0:
                     self.model.teacher_forcing -= 0.2
@@ -420,12 +433,13 @@ class RunModel:
 
                 val_avg_loss = val_loss_save / self.save_every
                 val_loss_save = 0
-
+                lr = float([group['lr'] for group in model_optimizer.param_groups][0])
+                self.writer.add_scalar('info/lr', lr, idx_epoch)
                 # add losses to own graph
                 self.plotter["train_loss"].append(train_avg_loss)
                 self.plotter["val_loss"].append(val_avg_loss)
 
-                print('Epoch %5d | avg t_loss: %6.2f | avg v_loss: %6.2f | saving' % (
+                print('Epoch %6d | avg t_loss: %6.2f | avg v_loss: %6.2f | saving & computing scores' % (
                     idx_epoch, train_avg_loss, val_avg_loss))
 
                 # refresh idx_epoch_save each time saving is called
@@ -434,6 +448,22 @@ class RunModel:
                 self.documentation["time_total_s"] = elapsed_time_s
                 self.documentation["train_loss"] = [round(train_avg_loss, 2)]
                 self.documentation["val_loss"] = [round(val_avg_loss, 2)]
+                self.documentation["lr"] = lr
+
+                # add metrics
+                self.evaluate_model_metrics(val_loader)
+
+                self.writer.add_scalars(f'metrics', {
+                    'bleu1': mean(self.metrics["bleu1"]),
+                    'bleu2': mean(self.metrics["bleu2"]),
+                    'bleu3': mean(self.metrics["bleu3"]),
+                    'bleu4': mean(self.metrics["bleu4"]),
+                    'meteor': mean(self.metrics["meteor"]),
+                    'rouge': mean(self.metrics["rouge"]),
+                }, idx_epoch)
+
+                # reset
+                self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
                 idx_epoch_save = idx_epoch
                 time_save = time.time()
@@ -557,10 +587,9 @@ class RunModel:
                 epoch_loss += loss
         return float(epoch_loss)
 
-    def evaluate_model_own(self, keypoints_loader):
+    def evaluate_model_metrics(self, keypoints_loader, finish=0):
         """
-        Evaluate Model after training and print example sentences
-        
+        Evaluate model with BLEU1-4, METEOR and ROUGE scores        
         :param keypoints_loader: 
         :return: 
         """""
@@ -575,7 +604,6 @@ class RunModel:
 
                 source_tensor = iterator_data[0]
                 target_tensor = iterator_data[1]
-                print("---" * 10)
 
                 flat_list = []  # sentence representation in int
                 if self.model_type == "trans":
@@ -591,14 +619,12 @@ class RunModel:
                 hypothesis = list(filter("<eos>".__ne__, hypothesis))
                 hyp_str = " ".join(hypothesis)
 
-                print("source_tensor.size: %d, target_tensor.size: %d" % (
-                    source_tensor.size()[0], target_tensor.size()[0]))
                 decoded_words = []
                 if self.model_type == "trans":
                     output = self.model(source_tensor)
                 else:
                     output = self.model(source_tensor, target_tensor)
-                print("---" * 10)
+
                 for ot in range(output.size(0)):
                     topv, topi = output[ot].topk(1)
                     if topi[0].item() == self.EOS_token:
@@ -625,24 +651,32 @@ class RunModel:
                 except ValueError:
                     rouge_score = 0.0
 
-                self.documentation["Epoch_BLEU1-4_METEOR_ROUGE"].append([bleu1_score, bleu2_score, bleu3_score,
-                                                                         bleu4_score, meteor_score, rouge_score])
+                # add to documentation purpose only in the end of training, for in between graph use metrics
+                # TODO merge documentation & metrics
+                if finish:
+                    print("____" * 10)
+                    print("Evaluating %d sentences:" % self.num_iteration_eval)
+                    print(
+                        "src len: %4d | tgt len: %4d | b1 %5.2f | b2 %5.2f | b3 %5.2f | b4 %5.2f | meteor %5.2f | rouge %5.2f |" % (
+                            source_tensor.size()[0], target_tensor.size()[0], bleu1_score, bleu2_score, bleu3_score,
+                            bleu4_score, meteor_score, rouge_score))
 
-                # cumulative BLEU scores
-                print('BLEU Cumulative 1-gram: %f' % bleu1_score)
-                print('BLEU Cumulative 2-gram: %f' % bleu2_score)
-                print('BLEU Cumulative 3-gram: %f' % bleu3_score)
-                print('BLEU Cumulative 4-gram: %f' % bleu4_score)
-                print('BLEU Cumulative 4-gram: %f' % bleu4_score)
-                print('METEOR score: %f' % meteor_score)
-                print('ROUGE-L F1 score score: %f' % rouge_score)
+                    self.documentation["Epoch_BLEU1-4_METEOR_ROUGE"].append([bleu1_score, bleu2_score, bleu3_score,
+                                                                             bleu4_score, meteor_score, rouge_score])
 
-                print("Hyp: %s" % hyp_str)
-                print("Ref: %s" % ref_str)
-                self.documentation["hypothesis"].append(hyp_str)
-                self.documentation["reference"].append(ref_str)  # cut reference down so its readable in the log
+                    print("Hypothesis: %s" % hyp_str)
+                    print("Reference : %s" % ref_str)
+                    self.documentation["hypothesis"].append(hyp_str)
+                    self.documentation["reference"].append(ref_str)  # cut reference down so its readable in the log
 
-                self.save_helper(self.save_state, Mode.eval)
+                    self.save_helper(self.save_state, Mode.eval)
+                else:
+                    self.metrics["bleu1"].append(bleu1_score)
+                    self.metrics["bleu2"].append(bleu2_score)
+                    self.metrics["bleu3"].append(bleu3_score)
+                    self.metrics["bleu4"].append(bleu4_score)
+                    self.metrics["meteor"].append(meteor_score)
+                    self.metrics["rouge"].append(rouge_score)
 
     def save_helper(self, save, mode):
 
@@ -668,7 +702,8 @@ class RunModel:
                                   "time_total_readable": "",
                                   "train_loss": [],
                                   "val_loss": [],
-                                  "tloss_vloss_time_epoch": [],
+                                  "lr": [],
+                                  "tloss_vloss_lr_time_epoch": [],
                                   "hypothesis": [],
                                   "reference": [],
                                   "Epoch_BLEU1-4_METEOR_ROUGE": [],

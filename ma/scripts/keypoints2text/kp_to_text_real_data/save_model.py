@@ -101,7 +101,7 @@ class Helper:
             save_model_file_path = current_folder / self.model_name
             torch.save(model, save_model_file_path)
 
-            doc["tloss_vloss_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]),
+            doc["tloss_vloss_lr_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]),float(doc["lr"]),
                                                   str(timedelta(seconds=(int(doc["time_total_s"])))),
                                                   doc["epochs_total"]])
 
@@ -110,7 +110,7 @@ class Helper:
                 outfile.write(repr(model))
                 outfile.write(
                     "\n\nTrain length: %d\nVal length: %d\nTest length: %d" % (train_length, val_length, test_length))
-                outfile.write("Total model.parameters: %d" % sum(p.numel() for p in model.parameters() if p.requires_grad))
+                outfile.write("\n\nTotal model.parameters: %d" % sum(p.numel() for p in model.parameters() if p.requires_grad))
 
             with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc, outfile)
@@ -132,8 +132,8 @@ class Helper:
                     str(timedelta(seconds=(int(doc_load["time_total_s"]))))  # convert the time above
                 doc_load["train_loss"] = doc["train_loss"]
                 doc_load["val_loss"] = doc["val_loss"]
-                doc_load["tloss_vloss_time_epoch"].append(
-                    [float(doc["train_loss"][0]), float(doc["val_loss"][0]), doc_load["time_total_readable"],
+                doc_load["tloss_vloss_lr_time_epoch"].append(
+                    [float(doc["train_loss"][0]), float(doc["val_loss"][0]), float(doc["lr"]), doc_load["time_total_readable"],
                      doc_load["epochs_total"]])
 
             elif mode == Mode.eval:
