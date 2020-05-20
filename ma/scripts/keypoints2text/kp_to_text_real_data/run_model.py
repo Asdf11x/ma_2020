@@ -66,9 +66,14 @@ class RunModel:
         self.dropout = config["model_settings"]["dropout"]
         self.bidir_encoder = config["model_settings"]["bidirectional_encoder"]
         self.batch_size = config["model_settings"]["batch_size"]
+        self.fake_batch = config["model_settings"]["fake_batch"]
+        # batch is multiplied by fake batch
+        # e.g. batch_size = 8, fake_batch = 2 -> train with batch_size = 8, but optim.step() is calculated after 2
+        if self.fake_batch < 1:
+            self.fake_batch = 1
+
         self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
         self.learning_rate = config["model_settings"]["learning_rate"]
-
 
         # trans model settings
         self.nhead = config["trans_settings"]["nhead"]
@@ -366,13 +371,11 @@ class RunModel:
 
         while remaining <= end:
 
-            train_data = self.load_data(it_train, train_loader)
-            train_loss = self.train_model(train_data, model_optimizer, criterion)
+            train_loss = self.train_model(it_train, train_loader, model_optimizer, criterion)
             train_loss_show += train_loss
             train_loss_save += train_loss
 
-            val_data = self.load_data(it_val, val_loader)
-            val_loss = self.val_model(val_data, criterion)
+            val_loss = self.val_model(it_val, val_loader, criterion)
             val_loss_show += val_loss
             val_loss_save += val_loss
 
@@ -423,7 +426,7 @@ class RunModel:
                 self.plotter["val_loss"].append(val_avg_loss)
 
                 print('Epoch %5d | avg t_loss: %6.2f | avg v_loss: %6.2f | saving' % (
-                idx_epoch, train_avg_loss, val_avg_loss))
+                    idx_epoch, train_avg_loss, val_avg_loss))
 
                 # refresh idx_epoch_save each time saving is called
                 idx_epoch_save = idx_epoch - idx_epoch_save
@@ -477,7 +480,7 @@ class RunModel:
                 data_iterator = iter(data_loader)
         return source_tensor, target_tensor
 
-    def train_model(self, train_data, model_optimizer, criterion):
+    def train_model(self, it_train, train_loader, model_optimizer, criterion):
         """
         the inner most method to train the model, the actual training is implemented here
         :param source_tensor:
@@ -487,71 +490,72 @@ class RunModel:
         :return:
         """
         self.model.train()
-        source_tensor = train_data[0]
-        target_tensor = train_data[1]
+        # train_data = self.load_data(it_train, train_loader)
+        # source_tensor = train_data[0]
+        # target_tensor = train_data[1]
 
         model_optimizer.zero_grad()
         epoch_loss = 0.0
         loss = None
-        if self.model_type == "trans":
-            output = self.model(source_tensor)
-            # print("target_tensor.size() %s" % str(target_tensor.size()))
-            loss = criterion(output.view(-1, self.output_dim), target_tensor)
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
-            model_optimizer.step()
-            epoch_loss = loss.item()
-        elif self.model_type == "attn" or self.model_type == "attn_batch":
-            output = self.model(source_tensor, target_tensor)
-
-            # trg = [trg len, batch size]
-            # output = [trg len, batch size, output dim]
-            output_dim = output.shape[-1]
-
-            output = output.view(-1, output_dim)
-            trg = target_tensor.view(-1)
-
-            # trg = [(trg len - 1) * batch size]
-            # output = [(trg len - 1) * batch size, output dim]
-            loss = criterion(output, trg)
-
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
-            model_optimizer.step()
-            epoch_loss = loss.item()
-
-
-        return epoch_loss
-
-    def val_model(self, data, criterion):
-        """Validate model during train runtime"""
-        loss = 0.0
-        epoch_loss = 0.0
-        self.model.eval()  # Turn on the evaluation mode
-        with torch.no_grad():
-            source_tensor = data[0]
-            target_tensor = data[1]
-
+        for acuumulated_step_i in range(self.fake_batch):
+            train_data = self.load_data(it_train, train_loader)
+            source_tensor = train_data[0]
+            target_tensor = train_data[1]
             if self.model_type == "trans":
                 output = self.model(source_tensor)
                 # print("target_tensor.size() %s" % str(target_tensor.size()))
                 loss = criterion(output.view(-1, self.output_dim), target_tensor)
-                epoch_loss += loss.item()
+
             elif self.model_type == "attn" or self.model_type == "attn_batch":
-                tf_temp = self.model.teacher_forcing
-                # turn off teacher forcing
-                self.model.teacher_forcing = 0
                 output = self.model(source_tensor, target_tensor)
-                self.model.teacher_forcing = tf_temp
+
+                # trg = [trg len, batch size]
+                # output = [trg len, batch size, output dim]
                 output_dim = output.shape[-1]
+
                 output = output.view(-1, output_dim)
                 trg = target_tensor.view(-1)
+
+                # trg = [(trg len - 1) * batch size]
+                # output = [(trg len - 1) * batch size, output dim]
                 loss = criterion(output, trg)
-                epoch_loss = loss.item()
+            loss = loss / self.fake_batch
+            epoch_loss += loss
+            loss.backward()
 
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
+        model_optimizer.step()
+        model_optimizer.zero_grad()
+        return float(epoch_loss)
 
-        return epoch_loss
+    def val_model(self, it_val, val_loader, criterion):
+        """Validate model during train runtime"""
+        loss = None
+        epoch_loss = 0.0
+        self.model.eval()  # Turn on the evaluation mode
+        for acuumulated_step_i in range(self.fake_batch):
+            with torch.no_grad():
+                val_data = self.load_data(it_val, val_loader)
+                source_tensor = val_data[0]
+                target_tensor = val_data[1]
+
+                if self.model_type == "trans":
+                    output = self.model(source_tensor)
+                    # print("target_tensor.size() %s" % str(target_tensor.size()))
+                    loss = criterion(output.view(-1, self.output_dim), target_tensor)
+                elif self.model_type == "attn" or self.model_type == "attn_batch":
+                    tf_temp = self.model.teacher_forcing
+                    # turn off teacher forcing
+                    self.model.teacher_forcing = 0
+                    output = self.model(source_tensor, target_tensor)
+                    self.model.teacher_forcing = tf_temp
+                    output_dim = output.shape[-1]
+                    output = output.view(-1, output_dim)
+                    trg = target_tensor.view(-1)
+                    loss = criterion(output, trg)
+                loss = loss / self.fake_batch
+                epoch_loss += loss
+        return float(epoch_loss)
 
     def evaluate_model_own(self, keypoints_loader):
         """
