@@ -110,6 +110,7 @@ class Helper:
                 outfile.write(repr(model))
                 outfile.write(
                     "\n\nTrain length: %d\nVal length: %d\nTest length: %d" % (train_length, val_length, test_length))
+                outfile.write("Total model.parameters: %d" % sum(p.numel() for p in model.parameters() if p.requires_grad))
 
             with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc, outfile)

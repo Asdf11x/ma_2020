@@ -153,14 +153,15 @@ class Decoder(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder, device):
+    def __init__(self, encoder, decoder, device, teacher_forcing):
         super().__init__()
 
         self.encoder = encoder
         self.decoder = decoder
         self.device = device
+        self.teacher_forcing = teacher_forcing
 
-    def forward(self, src, trg, teacher_forcing_ratio=0.5):
+    def forward(self, src, trg):
         # src = [src len, batch size]
         # trg = [trg len, batch size]
         # teacher_forcing_ratio is probability to use teacher forcing
@@ -189,7 +190,7 @@ class Seq2Seq(nn.Module):
             outputs[t] = output
 
             # decide if we are going to use teacher forcing or not
-            teacher_force = random.random() < teacher_forcing_ratio
+            teacher_force = random.random() < self.teacher_forcing
 
             # get the highest predicted token from our predictions
             top1 = output.argmax(1)

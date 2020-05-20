@@ -67,11 +67,11 @@ class RunModel:
         self.bidir_encoder = config["model_settings"]["bidirectional_encoder"]
         self.batch_size = config["model_settings"]["batch_size"]
         self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
+        self.learning_rate = config["model_settings"]["learning_rate"]
+
 
         # trans model settings
         self.nhead = config["trans_settings"]["nhead"]
-
-
 
         # train settings
         self.train_model_bool = config["train_settings"]["train_model_bool"]
@@ -177,7 +177,8 @@ class RunModel:
             transform=ToTensor(),
             kp_max_len=self.padding,
             text_max_len=self.padding)
-        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True, num_workers=0)
+        self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
+                                                             num_workers=0)
 
         # vocab size, amount of different unique words
         if self.output_dim == 0:
@@ -215,7 +216,7 @@ class RunModel:
         self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True,
                                                            num_workers=0)
         self.data_loader_val_eval = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True,
-                                                           num_workers=0)
+                                                                num_workers=0)
 
         # text2kp_test = TextKeypointsDataset(
         #     path_to_numpy_file=self.path_to_numpy_file_test,
@@ -247,7 +248,8 @@ class RunModel:
                                                         self.bidir_encoder, self.batch_size, self.SOS_token,
                                                         self.EOS_token)
             elif self.model_type == "trans":
-                self.model = self.init_model_trans(self.input_size, self.output_dim, self.hidden_size, self.num_layers, self.nhead, self.dropout)
+                self.model = self.init_model_trans(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
+                                                   self.nhead, self.dropout)
 
     def main(self):
         # check if model should be loaded or not. Loads model if model_file_path is set
@@ -257,12 +259,12 @@ class RunModel:
 
         # print and train model
         print(self.model)
+        print("Total model.parameters: %d" % sum(p.numel() for p in self.model.parameters() if p.requires_grad))
         if self.train_model_bool:
             self.train_run(self.data_loader_train, self.data_loader_val, self.num_iteration)
             # save graph after training
             self.run_helper.save_graph(self.current_folder, self.plotter)
         self.writer.close()
-
 
         # check if model should be evaluated or not (val set)
         if self.evaluate_model:
@@ -298,12 +300,12 @@ class RunModel:
                               bi_encoder, batch_size, SOS_token, EOS_token):
         # create encoder-decoder model with attention
         encoder = Encoder(input_dim, hidden_dim, hidden_dim, dropout, batch_size)
-        attention= Attention(hidden_dim, hidden_dim)
+        attention = Attention(hidden_dim, hidden_dim)
         decoder = Decoder(attention, output_dim, output_dim, hidden_dim, hidden_dim, dropout)
         if device == "cuda":
             encoder = encoder.cuda()
             decoder = decoder.cuda()
-        model = Seq2Seq(encoder, decoder, device).to(device)
+        model = Seq2Seq(encoder, decoder, device, teacher_forcing).to(device)
         return model
 
     def init_model_trans(self, input_dim, output_dim, hidden_dim, num_layers, nhead, dropout):
@@ -324,17 +326,21 @@ class RunModel:
         :return:
         """
         self.model.train()
-        lr = 3.0
-        model_optimizer = optim.SGD(self.model.parameters(), lr=lr)
+        lr = self.learning_rate
+        model_optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        # lr_scheduler.StepLR(optim, each_step, factor)
         scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, 5, gamma=0.95)
+        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=250)
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
 
-        if self.model_type == "trans":
-            criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
-        elif self.model_type == "attn":
-            criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
-        elif self.model_type == "attn_batch":
-            criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        # if self.model_type == "trans":
+        #     criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        # elif self.model_type == "attn":
+        #     criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        # elif self.model_type == "attn_batch":
+        #     criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+
+        criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
 
         time_run = time.time()  # start taking time to show on print
         time_save = time.time()  # start taking time to show on save
@@ -361,7 +367,7 @@ class RunModel:
         while remaining <= end:
 
             train_data = self.load_data(it_train, train_loader)
-            train_loss = self.train_model(train_data, model_optimizer, criterion, scheduler)
+            train_loss = self.train_model(train_data, model_optimizer, criterion)
             train_loss_show += train_loss
             train_loss_save += train_loss
 
@@ -370,11 +376,16 @@ class RunModel:
             val_loss_show += val_loss
             val_loss_save += val_loss
 
+            scheduler.step()
+            # Note that step should be called after validate()
+            scheduler_plat.step(val_loss)
             # add losses to tensorboard
             self.writer.add_scalar('Loss/train', train_loss, idx_epoch)
             self.writer.add_scalar('Loss/val', val_loss, idx_epoch)
 
-            if idx_epoch % int(self.num_iteration / 10) == 0 and self.model_type == "attn":
+            teacher_forcing_reduce = 10 if self.num_iteration / 10 == 0 else self.num_iteration / 10
+            if idx_epoch % int(teacher_forcing_reduce) == 0 and (
+                    self.model_type == "attn" or self.model_type == "attn_batch"):
                 if self.model.teacher_forcing > 0.0:
                     self.model.teacher_forcing -= 0.2
                 if self.model.teacher_forcing < 0.0:
@@ -387,9 +398,12 @@ class RunModel:
 
                 val_avg_loss = val_loss_show / self.show_every
                 val_loss_show = 0
-
-                print('Epoch %d, avg t_loss: %.2f, avg v_loss: %.2f, lr: %f, elapsed time: %s'
-                      % (idx_epoch, train_avg_loss, val_avg_loss, scheduler.get_lr()[0], str(datetime.timedelta(seconds=int(elapsed_time_s)))))
+                # use that instead of cheduler.get_lr[0] (deprecated), because of ReduceOnPlateau
+                lr = float([group['lr'] for group in model_optimizer.param_groups][0])
+                teacher_forcing_print = self.model.teacher_forcing if self.model_type == "attn" or self.model_type == "attn_batch" else 0.0
+                print('Epoch %5d | avg t_loss: %6.2f | avg v_loss: %6.2f | lr: %f | tf: %.2f | elapsed time: %s'
+                      % (idx_epoch, train_avg_loss, val_avg_loss, lr, round(teacher_forcing_print, 2),
+                         str(datetime.timedelta(seconds=int(elapsed_time_s)))))
 
                 remaining_time = int(time_end - time.time())
                 if time_end != 0.0:
@@ -408,7 +422,8 @@ class RunModel:
                 self.plotter["train_loss"].append(train_avg_loss)
                 self.plotter["val_loss"].append(val_avg_loss)
 
-                print('Saving at epoch %d, average loss: %.2f' % (idx_epoch, train_avg_loss))
+                print('Epoch %5d | avg t_loss: %6.2f | avg v_loss: %6.2f | saving' % (
+                idx_epoch, train_avg_loss, val_avg_loss))
 
                 # refresh idx_epoch_save each time saving is called
                 idx_epoch_save = idx_epoch - idx_epoch_save
@@ -462,7 +477,7 @@ class RunModel:
                 data_iterator = iter(data_loader)
         return source_tensor, target_tensor
 
-    def train_model(self, train_data, model_optimizer, criterion, scheduler):
+    def train_model(self, train_data, model_optimizer, criterion):
         """
         the inner most method to train the model, the actual training is implemented here
         :param source_tensor:
@@ -476,22 +491,22 @@ class RunModel:
         target_tensor = train_data[1]
 
         model_optimizer.zero_grad()
-        loss = 0.0
         epoch_loss = 0.0
+        loss = None
         if self.model_type == "trans":
             output = self.model(source_tensor)
             # print("target_tensor.size() %s" % str(target_tensor.size()))
             loss = criterion(output.view(-1, self.output_dim), target_tensor)
             loss.backward()
+
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
             model_optimizer.step()
-            epoch_loss += loss.item()
-        elif self.model_type == "attn":
+            epoch_loss = loss.item()
+        elif self.model_type == "attn" or self.model_type == "attn_batch":
             output = self.model(source_tensor, target_tensor)
 
             # trg = [trg len, batch size]
             # output = [trg len, batch size, output dim]
-
             output_dim = output.shape[-1]
 
             output = output.view(-1, output_dim)
@@ -499,42 +514,14 @@ class RunModel:
 
             # trg = [(trg len - 1) * batch size]
             # output = [(trg len - 1) * batch size, output dim]
-
             loss = criterion(output, trg)
 
             loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
-
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
             model_optimizer.step()
+            epoch_loss = loss.item()
 
-            epoch_loss += loss.item()
 
-        elif self.model_type == "attn_batch":
-            output = self.model(source_tensor, target_tensor)
-
-            # trg = [trg len, batch size]
-            # output = [trg len, batch size, output dim]
-
-            output_dim = output.shape[-1]
-
-            output = output[1:].view(-1, output_dim)
-            trg = target_tensor[1:].view(-1)
-
-            # trg = [(trg len - 1) * batch size]
-            # output = [(trg len - 1) * batch size, output dim]
-
-            loss = criterion(output, trg)
-
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
-
-            model_optimizer.step()
-
-            epoch_loss += loss.item()
-
-        scheduler.step()
         return epoch_loss
 
     def val_model(self, data, criterion):
@@ -551,30 +538,18 @@ class RunModel:
                 # print("target_tensor.size() %s" % str(target_tensor.size()))
                 loss = criterion(output.view(-1, self.output_dim), target_tensor)
                 epoch_loss += loss.item()
-            elif self.model_type == "attn":
+            elif self.model_type == "attn" or self.model_type == "attn_batch":
+                tf_temp = self.model.teacher_forcing
+                # turn off teacher forcing
+                self.model.teacher_forcing = 0
                 output = self.model(source_tensor, target_tensor)
+                self.model.teacher_forcing = tf_temp
                 output_dim = output.shape[-1]
                 output = output.view(-1, output_dim)
                 trg = target_tensor.view(-1)
                 loss = criterion(output, trg)
                 epoch_loss = loss.item()
-            elif self.model_type == "attn_batch":
-                output = self.model(source_tensor, target_tensor, 0)  # turn off teacher forcing
 
-                # trg = [trg len, batch size]
-                # output = [trg len, batch size, output dim]
-
-                output_dim = output.shape[-1]
-
-                output = output[1:].view(-1, output_dim)
-                trg = target_tensor[1:].view(-1)
-
-                # trg = [(trg len - 1) * batch size]
-                # output = [(trg len - 1) * batch size, output dim]
-
-                loss = criterion(output, trg)
-
-                epoch_loss += loss.item()
 
         return epoch_loss
 
@@ -597,8 +572,6 @@ class RunModel:
                 source_tensor = iterator_data[0]
                 target_tensor = iterator_data[1]
                 print("---" * 10)
-
-
 
                 flat_list = []  # sentence representation in int
                 if self.model_type == "trans":
