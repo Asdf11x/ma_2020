@@ -1,5 +1,8 @@
 """
-model_seq2seq.py: Implement the basic seq2seq model
+model_seq2seq.py: Implement the basic transformer model
+from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+here: 20-02-26_data_loader\test_2_online\transformer_tutorial.py
+
 """
 
 from __future__ import unicode_literals, division
