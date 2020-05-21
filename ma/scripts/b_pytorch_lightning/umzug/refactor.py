@@ -35,9 +35,9 @@ class Litty(LightningModule):
         self.src_mask = None
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.encoder = nn.Embedding(176, ninp)
+        self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
-        self.decoder = nn.Linear(ninp, 176)
+        self.decoder = nn.Linear(ninp, ntoken)
 
         self.init_weights()
 
