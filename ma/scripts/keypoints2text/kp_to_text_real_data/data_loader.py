@@ -64,6 +64,10 @@ class TextKeypointsDataset(data.Dataset):
         """Denotes the total number of samples"""
         with open(self.path_to_csv) as f:
             return sum(1 for line in f) - 1  # subtract 1, because of header line
+            #####################################################################
+            # TESTING SETTING REMOVE WHEN NOT USED ANYMORE
+            ################################################
+            # return 20  # subtract 1, because of header line
 
     def __getitem__(self, index):
         """
@@ -75,10 +79,8 @@ class TextKeypointsDataset(data.Dataset):
         keypoints = []
         keys_per_folder = []
         while 1:
-
             # get specific subdirectory corresponding to the index
             subdirectory = self.saved_column_kp[index]
-
             keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
             keys_per_folder = []
 
@@ -92,27 +94,43 @@ class TextKeypointsDataset(data.Dataset):
                     keys_y.extend(temp_df['people'][0][k][1::3])
                 keys_per_folder.append(keys_x + keys_y)
 
+            # transform to tensor here
             if self.transform:
                 keys_per_folder = self.transform(keys_per_folder)
 
+            # if padding is not used, break the loop here
             if self.kp_max_len == 0:
                 break
 
+            # if the data size is smaller than the padding size, then break the loop
             if keys_per_folder.size(0) <= self.kp_max_len:
                 break
+            # if the data size is bigger than the padding size, search for new data (might just cut the data?)
             else:
                 index = random.randint(0, self.amount_of_files-2)
 
         # keypoints padding
+        # check if padding is activated (kp_max_len must be greater than 0)
         if self.kp_max_len > 0:
-            if self.kp_max_len < keys_per_folder.size(0):
-                temp_max_len = keys_per_folder.size(0)
-            else:
-                temp_max_len = self.kp_max_len
-            length = keys_per_folder.size(0)
-            keys = torch.zeros(temp_max_len, 274)
-            source = keys_per_folder
-            keys[:length, :] = source
+            try:
+                if self.kp_max_len < keys_per_folder.size(0):
+                    temp_max_len = keys_per_folder.size(0)
+                else:
+                    temp_max_len = self.kp_max_len
+                length = keys_per_folder.size(0)
+                keys = torch.zeros(temp_max_len, 274)
+                source = keys_per_folder
+                keys[:length, :] = source
+            except RuntimeError:
+                with open("runtime_error.txt", "a+") as myfile:
+                    myfile.write("\ndl:\n")
+                    myfile.write(keys_per_folder.size(0))
+                    myfile.write("\n")
+                    myfile.write(keys_per_folder)
+                    myfile.write("\n")
+                    myfile.write(subdirectory)
+                    myfile.write("\n")
+
         else:
             keys = keys_per_folder
 

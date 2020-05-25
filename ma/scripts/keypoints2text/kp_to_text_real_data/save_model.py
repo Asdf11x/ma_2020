@@ -101,16 +101,18 @@ class Helper:
             save_model_file_path = current_folder / self.model_name
             torch.save(model, save_model_file_path)
 
-            doc["tloss_vloss_lr_time_epoch"].append([float(doc["train_loss"][0]), float(doc["val_loss"][0]),float(doc["lr"]),
-                                                  str(timedelta(seconds=(int(doc["time_total_s"])))),
-                                                  doc["epochs_total"]])
+            doc["tloss_vloss_lr_time_epoch"].append(
+                [float(doc["train_loss"][0]), float(doc["val_loss"][0]), float(doc["lr"]),
+                 str(timedelta(seconds=(int(doc["time_total_s"])))),
+                 doc["epochs_total"]])
 
             with open(current_folder / self.summary_name, 'a+') as outfile:
                 outfile.write("\n\n")
                 outfile.write(repr(model))
                 outfile.write(
                     "\n\nTrain length: %d\nVal length: %d\nTest length: %d" % (train_length, val_length, test_length))
-                outfile.write("\n\nTotal model.parameters: %d" % sum(p.numel() for p in model.parameters() if p.requires_grad))
+                outfile.write(
+                    "\n\nTotal model.parameters: %d" % sum(p.numel() for p in model.parameters() if p.requires_grad))
 
             with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc, outfile)
@@ -133,7 +135,8 @@ class Helper:
                 doc_load["train_loss"] = doc["train_loss"]
                 doc_load["val_loss"] = doc["val_loss"]
                 doc_load["tloss_vloss_lr_time_epoch"].append(
-                    [float(doc["train_loss"][0]), float(doc["val_loss"][0]), float(doc["lr"]), doc_load["time_total_readable"],
+                    [float(doc["train_loss"][0]), float(doc["val_loss"][0]), float(doc["lr"]),
+                     doc_load["time_total_readable"],
                      doc_load["epochs_total"]])
 
             elif mode == Mode.eval:
@@ -152,20 +155,21 @@ class Helper:
             with open(current_folder / self.run_info, 'w') as outfile:
                 json.dump(doc_load, outfile)
 
-    def save_graph(self, current_folder, plotter):
+    def save_graph(self, current_folder, plotter, save_every):
         current_folder = Path(current_folder)
         train = plotter["train_loss"]
         val = plotter["val_loss"]
 
-        x = np.linspace(0, len(train), len(train))
+        x = []
+        x.extend(range(0, len(train) * save_every, save_every))
         plt.plot(x, train, label="train")
         plt.plot(x, val, label="val")
-        plt.title("Signs2Text - %s model" %self.model_type)
+        plt.title("Signs2Text - %s model" % self.model_type)
         plt.ylabel("crossentropy loss")
         plt.xlabel("epochs")
         plt.legend()
         # plt.show()
-        save_graph = "train_val_loss_%d.png" % len(plotter["train_loss"])
+        save_graph = "train_val_loss_%d.png" % (len(plotter["train_loss"] * save_every))
         plt.savefig(current_folder / save_graph)
 
     def get_origin_json(self, save_model_file_path):

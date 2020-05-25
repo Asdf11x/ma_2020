@@ -77,7 +77,12 @@ class RunModel:
             self.fake_batch = 1
 
         self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
-        self.learning_rate = config["model_settings"]["learning_rate"]
+
+        # learning rate settings / training setting
+        self.learning_rate = config["learning_rate_settings"]["learning_rate"]
+        self.step_lr_each_nstep = config["learning_rate_settings"]["steplr_each_nstep"]
+        self.step_lr_gamma = config["learning_rate_settings"]["steplr_gamma"]
+        self.reduceplt_lr_patience = config["learning_rate_settings"]["reduceplt_lr_patience"]
 
         # trans model settings
         self.nhead = config["trans_settings"]["nhead"]
@@ -274,7 +279,7 @@ class RunModel:
         if self.train_model_bool:
             self.train_run(self.data_loader_train, self.data_loader_val, self.num_iteration)
             # save graph after training
-            self.run_helper.save_graph(self.current_folder, self.plotter)
+            self.run_helper.save_graph(self.current_folder, self.plotter, self.save_every)
         self.writer.close()
 
         # check if model should be evaluated or not (val set)
@@ -339,9 +344,8 @@ class RunModel:
         self.model.train()
         lr = self.learning_rate
         model_optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, 10,
-                                                    gamma=0.95)  # lr_scheduler.StepLR(optim, each_step, factor)
-        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=100)
+        scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, self.step_lr_each_nstep, gamma=self.step_lr_gamma)
+        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=self.reduceplt_lr_patience)
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
 
         # if self.model_type == "trans":
@@ -406,6 +410,8 @@ class RunModel:
                     self.model.teacher_forcing -= 0.2
                 if self.model.teacher_forcing < 0.0:
                     self.model.teacher_forcing = 0
+                self.writer.add_scalar('info/teacher_forcing', self.model.teacher_forcing, idx_epoch)
+
 
             if idx_epoch % self.show_every == 0:
                 elapsed_time_s = time.time() - time_run
@@ -436,10 +442,11 @@ class RunModel:
                 lr = float([group['lr'] for group in model_optimizer.param_groups][0])
                 self.writer.add_scalar('info/lr', lr, idx_epoch)
                 # add losses to own graph
+                # Dont move plotters to somewhere else, graph is plotted depending on self.save_every!
                 self.plotter["train_loss"].append(train_avg_loss)
                 self.plotter["val_loss"].append(val_avg_loss)
 
-                print('Epoch %6d | avg t_loss: %6.2f | avg v_loss: %6.2f | saving & computing scores' % (
+                print('Epoch %5d | avg t_loss: %6.2f | avg v_loss: %6.2f | saving & computing scores' % (
                     idx_epoch, train_avg_loss, val_avg_loss))
 
                 # refresh idx_epoch_save each time saving is called
@@ -451,7 +458,7 @@ class RunModel:
                 self.documentation["lr"] = lr
 
                 # add metrics
-                self.evaluate_model_metrics(val_loader)
+                self.evaluate_model_metrics(self.data_loader_val_eval)
 
                 self.writer.add_scalars(f'metrics', {
                     'bleu1': mean(self.metrics["bleu1"]),
@@ -502,7 +509,8 @@ class RunModel:
                 source_tensor_size = source_tensor.size(0)
                 target_tensor_size = target_tensor.size(0)
 
-                if 0 < source_tensor_size <= self.max_length and 0 < target_tensor_size:
+                # if 0 < source_tensor_size <= (self.max_length * self.batch_size) and 0 < target_tensor_size:
+                if 0 < source_tensor_size and 0 < target_tensor_size:
                     break
             except StopIteration:  # reinitialize data loader if num_iteration > amount of data
                 data_iterator = iter(data_loader)
@@ -596,9 +604,18 @@ class RunModel:
         it = iter(keypoints_loader)
         rouge = Rouge()
         for idx in range(1, self.num_iteration_eval + 1):
+            temp_batch = self.batch_size
             self.batch_size = 1
-            self.model.encoder.batch_size = 1
+
+            if self.model_type != "trans":
+                temp_model_batch_size = self.model.encoder.batch_size
+                self.model.encoder.batch_size = 1
+
             iterator_data = self.load_data(it, keypoints_loader)
+
+            self.batch_size = temp_batch
+            if self.model_type != "trans":
+                self.model.encoder.batch_size = temp_model_batch_size
 
             with torch.no_grad():
 
@@ -634,7 +651,7 @@ class RunModel:
                         decoded_words.append(topi[0].item())
 
                 reference = DataUtils().int2text(decoded_words,
-                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_all))
                 reference = list(filter("<pad>".__ne__, reference))
                 reference = list(filter("<eos>".__ne__, reference))
                 ref_str = " ".join(reference)

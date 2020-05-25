@@ -1,32 +1,36 @@
-"""refactor.py: starting to move my stuff to the lightning modules
+"""run_lightning.py:
 
-20.05.2020:
+21.02.2020:
 
-used this script to try pytorch lightning. Transformer was running on small dataset locally with cpu,
-moved it then to run_lightning.py and developed continued there with development
+Using the transformer model with pytorch lightning. Using only the transformer model here because its suited for the usage with lightning.
+I think moving the seq2seq with attention to lightning is tricky because of the AttnSeq2Seq class
+
 """
 from __future__ import unicode_literals, division
-
 import warnings
-
 import torch
 import torch.nn as nn
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import torch.optim as optim
 import torch.utils
-import torch.utils
-import torch.utils.data
 import torch.utils.data
 from pytorch_lightning.core.lightning import LightningModule
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from pytorch_lightning import Trainer
 import sys
 import json
 from pathlib import Path
+
+# use try/except -> local and server import differs
+try:
+    from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
+    from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+except ImportError:  # server uses different imports than local
+    from data_loader import TextKeypointsDataset, ToTensor
+    from data_utils import DataUtils
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 warnings.filterwarnings("ignore")
-
-from keypoints2text.kp_to_text_real_data.data_loader import TextKeypointsDataset, ToTensor
-from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
+import traceback
 
 
 class Litty(LightningModule):
@@ -112,7 +116,8 @@ class Litty(LightningModule):
         # ____________________________________________________________________________________
         # DEFINE MODEL
         # ____________________________________________________________________________________
-        self.transformer_encoder = TransformerEncoder(TransformerEncoderLayer(self.input_size, self.nhead, self.hidden_size, self.dropout), self.num_layers)
+        self.transformer_encoder = TransformerEncoder(
+            TransformerEncoderLayer(self.input_size, self.nhead, self.hidden_size, self.dropout), self.num_layers)
         self.encoder = nn.Embedding(self.output_dim, self.input_size)
         self.decoder = nn.Linear(self.input_size, self.output_dim)
         initrange = 0.1
@@ -142,18 +147,7 @@ class Litty(LightningModule):
         output = self.decoder(output)
         return output
 
-    def train_dataloader(self):
-        # Dataloaders for train, val & test
-        text2kp_train = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_train,
-            path_to_csv=self.path_to_csv_train,
-            path_to_vocab_file=self.path_to_vocab_file_all,
-            transform=ToTensor(),
-            kp_max_len=self.padding,
-            text_max_len=self.padding)
-        data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
-                                                        num_workers=0)
-        return data_loader_train
+
 
     def val_dataloader(self):
         text2kp_val = TextKeypointsDataset(
@@ -168,25 +162,59 @@ class Litty(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         source_tensor, target_tensor = batch
-        source_tensor = source_tensor.view(-1, self.batch_size, self.input_size)
+        source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
         target_tensor = target_tensor.view(-1)
-        target_tensor = target_tensor.type(torch.LongTensor)
+        target_tensor = target_tensor.type(torch.LongTensor).to(device)
         output = self(source_tensor)
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
         criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
         # print("target_tensor.size() %s" % str(target_tensor.size()))
         loss = criterion(output.view(-1, self.output_dim), target_tensor)
-        logs = {'loss': loss}
-        return {'loss': loss, 'log': logs}
+        return {'loss': loss}
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.learning_rate)
 
+    def train_dataloader(self):
+        text2kp_train = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_train,
+            path_to_csv=self.path_to_csv_train,
+            path_to_vocab_file=self.path_to_vocab_file_all,
+            transform=ToTensor(),
+            kp_max_len=self.padding,
+            text_max_len=self.padding)
+        data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
+                                                        num_workers=0)
+        return data_loader_train
+
     def training_step(self, batch, batch_idx):
         source_tensor, target_tensor = batch
-        source_tensor = source_tensor.view(-1, self.batch_size, self.input_size)
+        source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
         target_tensor = target_tensor.view(-1)
-        target_tensor = target_tensor.type(torch.LongTensor)
+        target_tensor = target_tensor.type(torch.LongTensor).to(device)
+        # try:
+        #     source_tensor, target_tensor = batch
+        #     source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
+        #     target_tensor = target_tensor.view(-1)
+        #     target_tensor = target_tensor.type(torch.LongTensor).to(device)
+        # except RuntimeError as e:
+        #     with open('log.txt', 'a+') as f:
+        #         f.write(str(e))
+        #         f.write(traceback.format_exc())
+        #
+        #     with open("runtime_error.txt", "a+") as myfile:
+        #         myfile.write("\nrun:\n")
+        #         myfile.write(str(source_tensor.size()))
+        #         myfile.write("\n")
+        #         myfile.write(str(source_tensor))
+        #         myfile.write("\n")
+        #         myfile.write(str(target_tensor.size()))
+        #         myfile.write("\n")
+        #         myfile.write(str(target_tensor))
+        #         myfile.write("\n")
+        #         myfile.write(
+        #             str(DataUtils().int2text(target_tensor, DataUtils().vocab_int2word(self.path_to_vocab_file_all))))
+        #         myfile.write("\n")
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
         criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
 
@@ -194,7 +222,7 @@ class Litty(LightningModule):
         # print("target_tensor.size() %s" % str(target_tensor.size()))
         loss = criterion(output.view(-1, self.output_dim), target_tensor)
         # self.logger.summary.scalar('loss', loss)
-        logs = {'loss': loss}
+        logs = {'train_loss': loss}
         return {'loss': loss, 'log': logs}
 
 
@@ -203,7 +231,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         hparams_path = str(sys.argv[1])
     else:
-        hparams_path = r"C:\Eigene_Programme\Git-Data\Own_Repositories\ma_2020\ma\scripts\keypoints2text\kp_to_text_real_data\hparams.json"
+        hparams_path = r"hparams.json"
     model = Litty(hparams_path)
     trainer = Trainer()
     trainer.fit(model)
