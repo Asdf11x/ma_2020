@@ -1,4 +1,14 @@
-"""npy2sentences_utils.py: create the link from the npy files to the sentences files"""
+"""npy2sentences_utils.py: create the link from the npy files to the sentences files
+
+npy2sentences_utils.py path_to_npy_file path_to_sentence_file path_to_target_folder
+
+path_to_npy_file: set path to the .npy file containing all the train, val or test data
+path_to_sentence_file: set path to transformed (cleaned, processed) .txt-file containing all sentences
+e.g. how2sign.train.id_transformed.txt
+    - e.g. a line in the file: ad4_GWc5XRo_10 one two three
+path_to_target_folder where the new file should be saved to
+
+"""
 
 import pandas as pd
 import numpy as np

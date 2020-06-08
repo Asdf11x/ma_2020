@@ -49,7 +49,7 @@ class TransformerModel(nn.Module):
         # print(src.size())
         # src = self.encoder(src) * math.sqrt(self.ninp)
         # print(src.size())
-
+        #
         # src = self.pos_encoder(src)
         # print(src.size())
 

@@ -9,6 +9,7 @@ import torch.nn.functional as F
 class Encoder(nn.Module):
     def __init__(self, input_dim, enc_hid_dim, dec_hid_dim, dropout, batch_size):
         super().__init__()
+        self.input_dim = input_dim
         self.batch_size = batch_size
         self.rnn = nn.GRU(input_dim, enc_hid_dim, bidirectional=True)
 
@@ -19,7 +20,7 @@ class Encoder(nn.Module):
     def forward(self, src):
         # src = [src len, batch size]
 
-        src = src.view(-1, self.batch_size, 274)
+        src = src.view(-1, self.batch_size, self.input_dim)
 
         # embedded = [src len, batch size, emb dim]
 

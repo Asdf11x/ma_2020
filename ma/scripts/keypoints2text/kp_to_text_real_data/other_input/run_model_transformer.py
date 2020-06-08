@@ -160,11 +160,10 @@ class RunModel:
             self.current_folder = os.path.dirname(self.load_model_path)
 
         # Dataloaders for train, val & test
-        text2kp_train = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_train,
-            path_to_csv=self.path_to_csv_train,
-            path_to_vocab_file=self.path_to_vocab_file_train,
-            transform=ToTensor())
+        text2kp_train = TextKeypointsDataset(path_to_numpy_file=self.path_to_numpy_file_train,
+                                             path_to_csv=self.path_to_csv_train,
+                                             path_to_vocab_file=self.path_to_vocab_file_train, input_length=,
+                                             transform=ToTensor())
         self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
                                                              num_workers=0)
 
@@ -194,11 +193,10 @@ class RunModel:
         # self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
         #                                                      num_workers=0)
 
-        text2kp_val = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_val,
-            path_to_csv=self.path_to_csv_val,
-            path_to_vocab_file=self.path_to_vocab_file_val,
-            transform=ToTensor())
+        text2kp_val = TextKeypointsDataset(path_to_numpy_file=self.path_to_numpy_file_val,
+                                           path_to_csv=self.path_to_csv_val,
+                                           path_to_vocab_file=self.path_to_vocab_file_val, input_length=,
+                                           transform=ToTensor())
         self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
         #

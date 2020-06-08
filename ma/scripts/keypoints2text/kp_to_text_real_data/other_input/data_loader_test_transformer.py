@@ -25,7 +25,7 @@ class PrintDataset:
         text2kp = TextKeypointsDataset(
             path_to_numpy_file=r"C:\Users\Asdf\Downloads\How2Sign_samples\all_files_normalized.npy",
             path_to_csv=r"/keypoints2text/data/text/3_linked_to_npy/how2sign.test.id_transformed.txt_2npy.txt",
-            path_to_vocab_file=r"/keypoints2text/data/text/1_vocab_list/how2sign.test.id_vocab.txt",
+            path_to_vocab_file=r"/keypoints2text/data/text/1_vocab_list/how2sign.test.id_vocab.txt", input_length=,
             transform=ToTensor())
 
         keypoints_loader = torch.utils.data.DataLoader(text2kp, batch_size=1, shuffle=True, num_workers=0)

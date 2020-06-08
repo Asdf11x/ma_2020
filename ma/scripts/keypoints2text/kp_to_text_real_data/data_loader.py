@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 import numbers
 import random
+
 try:
     from keypoints2text.kp_to_text_real_data.data_utils import DataUtils
 except ImportError:  # server uses different imports than local
@@ -25,11 +26,12 @@ class TextKeypointsDataset(data.Dataset):
     Characterizes a dataset for PyTorch
     """
 
-    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, transform=None, kp_max_len=0,
+    def __init__(self, path_to_numpy_file, path_to_csv, path_to_vocab_file, input_length, transform=None, kp_max_len=0,
                  text_max_len=0):
         self.path_to_numpy_file = path_to_numpy_file
         self.path_to_csv = path_to_csv
         self.path_to_vocab_file = path_to_vocab_file
+        self.input_length = input_length
         self.transform = transform
         self.kp_max_len = kp_max_len
         self.text_max_len = text_max_len
@@ -83,16 +85,33 @@ class TextKeypointsDataset(data.Dataset):
             subdirectory = self.saved_column_kp[index]
             keys = ['pose_keypoints_2d', 'face_keypoints_2d', 'hand_left_keypoints_2d', 'hand_right_keypoints_2d']
             keys_per_folder = []
+            keys_per_folder_256 = []
 
             for file in self.all_files[subdirectory]:
                 temp_df = self.all_files[subdirectory][file]
                 # init dictionaries & write x, y values into dictionary
                 keys_x = []
                 keys_y = []
+                keys_x_256 = []
+                keys_y_256 = []
                 for k in keys:
-                    keys_x.extend(temp_df['people'][0][k][0::3])
-                    keys_y.extend(temp_df['people'][0][k][1::3])
-                keys_per_folder.append(keys_x + keys_y)
+                    if k == "pose_keypoints_2d":
+                        # keys_x.extend(temp_df['people'][0][k][0::3])
+                        # keys_y.extend(temp_df['people'][0][k][1::3])
+
+                        keys_x_256 = temp_df['people'][0][k][0:25:3]
+                        keys_x_256.extend(temp_df['people'][0][k][45:55:3])
+                        keys_y_256 = temp_df['people'][0][k][1:26:3]
+                        keys_y_256.extend(temp_df['people'][0][k][46:56:3])
+                    else:
+                        # keys_x.extend(temp_df['people'][0][k][0::3])
+                        # keys_y.extend(temp_df['people'][0][k][1::3])
+
+                        keys_x_256.extend(temp_df['people'][0][k][0::3])
+                        keys_y_256.extend(temp_df['people'][0][k][1::3])
+
+                # keys_per_folder.append(keys_x + keys_y)
+                keys_per_folder.append(keys_x_256 + keys_y_256 + [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
             # transform to tensor here
             if self.transform:
@@ -107,7 +126,7 @@ class TextKeypointsDataset(data.Dataset):
                 break
             # if the data size is bigger than the padding size, search for new data (might just cut the data?)
             else:
-                index = random.randint(0, self.amount_of_files-2)
+                index = random.randint(0, self.amount_of_files - 2)
 
         # keypoints padding
         # check if padding is activated (kp_max_len must be greater than 0)
@@ -118,17 +137,17 @@ class TextKeypointsDataset(data.Dataset):
                 else:
                     temp_max_len = self.kp_max_len
                 length = keys_per_folder.size(0)
-                keys = torch.zeros(temp_max_len, 274)
+                keys = torch.zeros(temp_max_len, self.input_length)
                 source = keys_per_folder
                 keys[:length, :] = source
             except RuntimeError:
                 with open("runtime_error.txt", "a+") as myfile:
                     myfile.write("\ndl:\n")
-                    myfile.write(keys_per_folder.size(0))
+                    myfile.write(str(keys_per_folder.size(0)))
                     myfile.write("\n")
-                    myfile.write(keys_per_folder)
+                    myfile.write(str(keys_per_folder))
                     myfile.write("\n")
-                    myfile.write(subdirectory)
+                    myfile.write(str(subdirectory))
                     myfile.write("\n")
 
         else:

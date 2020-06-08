@@ -186,13 +186,10 @@ class RunModel:
             self.current_folder = os.path.dirname(self.load_model_path)
 
         # Dataloaders for train, val & test
-        text2kp_train = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_train,
-            path_to_csv=self.path_to_csv_train,
-            path_to_vocab_file=self.path_to_vocab_file_train,
-            transform=ToTensor(),
-            kp_max_len=self.padding,
-            text_max_len=self.padding)
+        text2kp_train = TextKeypointsDataset(path_to_numpy_file=self.path_to_numpy_file_train,
+                                             path_to_csv=self.path_to_csv_train,
+                                             path_to_vocab_file=self.path_to_vocab_file_train, input_length=self.input_size,
+                                             transform=ToTensor(), kp_max_len=self.padding, text_max_len=self.padding)
         self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
                                                              num_workers=0)
 
@@ -222,13 +219,10 @@ class RunModel:
         # self.data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
         #                                                      num_workers=0)
 
-        text2kp_val = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_val,
-            path_to_csv=self.path_to_csv_val,
-            path_to_vocab_file=self.path_to_vocab_file_val,
-            transform=ToTensor(),
-            kp_max_len=self.padding,
-            text_max_len=self.padding)
+        text2kp_val = TextKeypointsDataset(path_to_numpy_file=self.path_to_numpy_file_val,
+                                           path_to_csv=self.path_to_csv_val,
+                                           path_to_vocab_file=self.path_to_vocab_file_val, input_length=self.input_size,
+                                           transform=ToTensor(), kp_max_len=self.padding, text_max_len=self.padding)
         self.data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, shuffle=True,
                                                            num_workers=0)
         self.data_loader_val_eval = torch.utils.data.DataLoader(text2kp_val, batch_size=1, shuffle=True,
@@ -499,8 +493,8 @@ class RunModel:
                 # data[1].size(): (batchsize=1, words=3) => [1, 3]
                 # data[1].size(0): 3
 
-                source_tensor = torch.as_tensor(
-                    data[0], dtype=torch.float, device=device).view(-1, self.batch_size, 274)
+                source_tensor = torch.as_tensor(data[0], dtype=torch.float, device=device)
+                source_tensor = source_tensor.permute(1, 0, 2)
                 if self.model_type == "trans":
                     target_tensor = torch.as_tensor(data[1], dtype=torch.long, device=device).view(-1)
                 else:
@@ -604,18 +598,7 @@ class RunModel:
         it = iter(keypoints_loader)
         rouge = Rouge()
         for idx in range(1, self.num_iteration_eval + 1):
-            temp_batch = self.batch_size
-            self.batch_size = 1
-
-            if self.model_type != "trans":
-                temp_model_batch_size = self.model.encoder.batch_size
-                self.model.encoder.batch_size = 1
-
             iterator_data = self.load_data(it, keypoints_loader)
-
-            self.batch_size = temp_batch
-            if self.model_type != "trans":
-                self.model.encoder.batch_size = temp_model_batch_size
 
             with torch.no_grad():
 
@@ -672,7 +655,6 @@ class RunModel:
                 # TODO merge documentation & metrics
                 if finish:
                     print("____" * 10)
-                    print("Evaluating %d sentences:" % self.num_iteration_eval)
                     print(
                         "src len: %4d | tgt len: %4d | b1 %5.2f | b2 %5.2f | b3 %5.2f | b4 %5.2f | meteor %5.2f | rouge %5.2f |" % (
                             source_tensor.size()[0], target_tensor.size()[0], bleu1_score, bleu2_score, bleu3_score,

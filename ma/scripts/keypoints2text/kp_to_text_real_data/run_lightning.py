@@ -134,7 +134,7 @@ class Litty(LightningModule):
     def forward(self, src):
         if self.src_mask is None or self.src_mask.size(0) != len(src):
             device = src.device
-            mask = self._generate_square_subsequent_mask(len(src)).to(device)
+            mask = self._generate_square_subsequent_mask(len(src)).to(self.device)
             self.src_mask = mask
         # print(src.size())
         # src = self.encoder(src) * math.sqrt(self.ninp)
@@ -147,51 +147,50 @@ class Litty(LightningModule):
         output = self.decoder(output)
         return output
 
-
-
-    def val_dataloader(self):
-        text2kp_val = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_val,
-            path_to_csv=self.path_to_csv_val,
-            path_to_vocab_file=self.path_to_vocab_file_all,
-            transform=ToTensor(),
-            kp_max_len=self.padding,
-            text_max_len=self.padding)
-        data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, num_workers=0)
-        return data_loader_val
-
-    def validation_step(self, batch, batch_idx):
-        source_tensor, target_tensor = batch
-        source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
-        target_tensor = target_tensor.view(-1)
-        target_tensor = target_tensor.type(torch.LongTensor).to(device)
-        output = self(source_tensor)
-        ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
-        criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
-        # print("target_tensor.size() %s" % str(target_tensor.size()))
-        loss = criterion(output.view(-1, self.output_dim), target_tensor)
-        return {'loss': loss}
+    # def val_dataloader(self):
+    #     text2kp_val = TextKeypointsDataset(
+    #         path_to_numpy_file=self.path_to_numpy_file_val,
+    #         path_to_csv=self.path_to_csv_val,
+    #         path_to_vocab_file=self.path_to_vocab_file_all,
+    #          input_length = self.input_size,
+    #         transform=ToTensor(),
+    #         kp_max_len=self.padding,
+    #         text_max_len=self.padding)
+    #     data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, num_workers=0)
+    #
+    #     return data_loader_val
+    #
+    # def validation_step(self, batch, batch_idx):
+    #     source_tensor, target_tensor = batch
+    #     source_tensor = source_tensor.permute(1, 0, 2)
+    #     target_tensor = target_tensor.view(-1)
+    #     target_tensor = target_tensor.type(torch.LongTensor).to(self.device)
+    #     output = self(source_tensor)
+    #     ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
+    #     criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+    #     # print("target_tensor.size() %s" % str(target_tensor.size()))
+    #     loss = criterion(output.view(-1, self.output_dim), target_tensor)
+    #     return {'loss': loss}
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.learning_rate)
 
     def train_dataloader(self):
-        text2kp_train = TextKeypointsDataset(
-            path_to_numpy_file=self.path_to_numpy_file_train,
-            path_to_csv=self.path_to_csv_train,
-            path_to_vocab_file=self.path_to_vocab_file_all,
-            transform=ToTensor(),
-            kp_max_len=self.padding,
-            text_max_len=self.padding)
+        text2kp_train = TextKeypointsDataset(path_to_numpy_file=self.path_to_numpy_file_train,
+                                             path_to_csv=self.path_to_csv_train,
+                                             path_to_vocab_file=self.path_to_vocab_file_all, input_length=self.input_size,
+                                             transform=ToTensor(), kp_max_len=self.padding, text_max_len=self.padding)
         data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
                                                         num_workers=0)
         return data_loader_train
 
     def training_step(self, batch, batch_idx):
         source_tensor, target_tensor = batch
-        source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
+        source_tensor = source_tensor.permute(1, 0, 2)
+        # source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
         target_tensor = target_tensor.view(-1)
-        target_tensor = target_tensor.type(torch.LongTensor).to(device)
+        target_tensor = target_tensor.type(torch.LongTensor).to(self.device)
+
         # try:
         #     source_tensor, target_tensor = batch
         #     source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
