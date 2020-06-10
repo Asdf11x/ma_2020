@@ -77,6 +77,7 @@ class RunModel:
             self.fake_batch = 1
 
         self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
+        self.num_workers = config["model_settings"]["num_workers"]
 
         # learning rate settings / training setting
         self.learning_rate = config["learning_rate_settings"]["learning_rate"]

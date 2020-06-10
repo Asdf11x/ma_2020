@@ -131,24 +131,15 @@ class TextKeypointsDataset(data.Dataset):
         # keypoints padding
         # check if padding is activated (kp_max_len must be greater than 0)
         if self.kp_max_len > 0:
-            try:
-                if self.kp_max_len < keys_per_folder.size(0):
-                    temp_max_len = keys_per_folder.size(0)
-                else:
-                    temp_max_len = self.kp_max_len
-                length = keys_per_folder.size(0)
-                keys = torch.zeros(temp_max_len, self.input_length)
-                source = keys_per_folder
-                keys[:length, :] = source
-            except RuntimeError:
-                with open("runtime_error.txt", "a+") as myfile:
-                    myfile.write("\ndl:\n")
-                    myfile.write(str(keys_per_folder.size(0)))
-                    myfile.write("\n")
-                    myfile.write(str(keys_per_folder))
-                    myfile.write("\n")
-                    myfile.write(str(subdirectory))
-                    myfile.write("\n")
+            if self.kp_max_len < keys_per_folder.size(0):
+                temp_max_len = keys_per_folder.size(0)
+            else:
+                temp_max_len = self.kp_max_len
+            length = keys_per_folder.size(0)
+            keys = torch.zeros(temp_max_len, self.input_length)
+            source = keys_per_folder
+            keys[:length, :] = source
+
 
         else:
             keys = keys_per_folder

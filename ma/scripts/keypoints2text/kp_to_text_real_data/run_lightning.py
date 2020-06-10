@@ -19,6 +19,13 @@ from pytorch_lightning import Trainer
 import sys
 import json
 from pathlib import Path
+from tensorboardX import SummaryWriter
+import time
+from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.meteor_score import single_meteor_score
+from rouge import Rouge
+from statistics import mean
+import math
 
 # use try/except -> local and server import differs
 try:
@@ -32,10 +39,27 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 warnings.filterwarnings("ignore")
 import traceback
 
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
 
 class Litty(LightningModule):
 
-    def __init__(self, hparams_path):
+    def __init__(self, hparams_path, timestr):
         super().__init__()
 
         # ____________________________________________________________________________________
@@ -60,6 +84,7 @@ class Litty(LightningModule):
             self.fake_batch = 1
 
         self.model_type = config["model_settings"]["model_type"]  # model_type: basic, attn or trans
+        self.num_workers = config["model_settings"]["num_workers"]
         self.learning_rate = config["learning_rate_settings"]["learning_rate"]
 
         # trans model settings
@@ -113,11 +138,15 @@ class Litty(LightningModule):
         self.save_every = config["save_load"]["save_every"]  # save each x epoch
         self.output_dim = config["padding"]["output_dim"]
 
+        self.writer = SummaryWriter(Path(self.save_model_folder_path) / timestr)
+        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
+
         # ____________________________________________________________________________________
         # DEFINE MODEL
         # ____________________________________________________________________________________
         self.transformer_encoder = TransformerEncoder(
             TransformerEncoderLayer(self.input_size, self.nhead, self.hidden_size, self.dropout), self.num_layers)
+        self.pos_encoder = PositionalEncoding(self.input_size, self.dropout)
         self.encoder = nn.Embedding(self.output_dim, self.input_size)
         self.decoder = nn.Linear(self.input_size, self.output_dim)
         initrange = 0.1
@@ -134,43 +163,117 @@ class Litty(LightningModule):
     def forward(self, src):
         if self.src_mask is None or self.src_mask.size(0) != len(src):
             device = src.device
-            mask = self._generate_square_subsequent_mask(len(src)).to(self.device)
+            mask = self._generate_square_subsequent_mask(len(src)).to(device)
             self.src_mask = mask
         # print(src.size())
         # src = self.encoder(src) * math.sqrt(self.ninp)
         # print(src.size())
 
-        # src = self.pos_encoder(src)
-        # print(src.size())
+        src = self.pos_encoder(src)
 
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)
         return output
 
-    # def val_dataloader(self):
-    #     text2kp_val = TextKeypointsDataset(
-    #         path_to_numpy_file=self.path_to_numpy_file_val,
-    #         path_to_csv=self.path_to_csv_val,
-    #         path_to_vocab_file=self.path_to_vocab_file_all,
-    #          input_length = self.input_size,
-    #         transform=ToTensor(),
-    #         kp_max_len=self.padding,
-    #         text_max_len=self.padding)
-    #     data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, num_workers=0)
-    #
-    #     return data_loader_val
-    #
-    # def validation_step(self, batch, batch_idx):
-    #     source_tensor, target_tensor = batch
-    #     source_tensor = source_tensor.permute(1, 0, 2)
-    #     target_tensor = target_tensor.view(-1)
-    #     target_tensor = target_tensor.type(torch.LongTensor).to(self.device)
-    #     output = self(source_tensor)
-    #     ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
-    #     criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
-    #     # print("target_tensor.size() %s" % str(target_tensor.size()))
-    #     loss = criterion(output.view(-1, self.output_dim), target_tensor)
-    #     return {'loss': loss}
+    def val_dataloader(self):
+        text2kp_val = TextKeypointsDataset(
+            path_to_numpy_file=self.path_to_numpy_file_val,
+            path_to_csv=self.path_to_csv_val,
+            path_to_vocab_file=self.path_to_vocab_file_all,
+            input_length=self.input_size,
+            transform=ToTensor(),
+            kp_max_len=self.padding,
+            text_max_len=self.padding)
+        data_loader_val = torch.utils.data.DataLoader(text2kp_val, batch_size=self.batch_size, num_workers=self.num_workers)
+
+        return data_loader_val
+
+    def validation_step(self, batch, batch_idx):
+        rouge = Rouge()
+        source_tensor, target_tensor = batch
+        source_tensor_metrics = source_tensor[0]
+        source_tensor_metrics = source_tensor_metrics.view(self.padding, 1, self.input_size)
+        source_tensor = source_tensor.permute(1, 0, 2)
+        target_tensor_metrics = target_tensor[0]
+        target_tensor = target_tensor.view(-1)
+        target_tensor = target_tensor.type(torch.LongTensor).to(target_tensor.device)
+
+        output = self(source_tensor)
+
+        ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
+        criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        loss = criterion(output.view(-1, self.output_dim), target_tensor)
+
+        # ________
+        # COMPUTING METRICS
+        # ________
+
+        flat_list = []  # sentence representation in int
+        for sublist in target_tensor.tolist():
+            flat_list.append(sublist)
+        hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+        hypothesis = list(filter("<pad>".__ne__, hypothesis))
+        hypothesis = list(filter("<eos>".__ne__, hypothesis))
+        hyp_str = " ".join(hypothesis)
+
+        decoded_words = []
+        output = self(source_tensor)
+        for ot in range(output.size(0)):
+            topv, topi = output[ot].topk(1)
+            if topi[0].item() == self.EOS_token:
+                decoded_words.append('<eos>')
+                break
+            else:
+                decoded_words.append(topi[0].item())
+
+        reference = DataUtils().int2text(decoded_words,
+                                         DataUtils().vocab_int2word(self.path_to_vocab_file_all))
+        # print("reference:")
+        # print(reference)
+        reference = list(filter("<pad>".__ne__, reference))
+        reference = list(filter("<eos>".__ne__, reference))
+        ref_str = " ".join(reference[:len(hypothesis)])
+
+        # print("hyp_str: %s" % hyp_str)
+        # print("ref_str: %s" % ref_str)
+
+        # if len(hypothesis) >= 4 or len(reference) >= 4:
+        # there may be several references
+        bleu1_score = round(sentence_bleu([reference], hypothesis, weights=(1, 0, 0, 0)), 4)
+        bleu2_score = round(sentence_bleu([reference], hypothesis, weights=(0.5, 0.5, 0, 0)), 4)
+        bleu3_score = round(sentence_bleu([reference], hypothesis, weights=(0.33, 0.33, 0.33, 0)), 4)
+        bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
+        meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
+        try:
+            rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
+        except ValueError:
+            rouge_score = 0.0
+
+        self.metrics["bleu1"].append(bleu1_score)
+        self.metrics["bleu2"].append(bleu2_score)
+        self.metrics["bleu3"].append(bleu3_score)
+        self.metrics["bleu4"].append(bleu4_score)
+        self.metrics["meteor"].append(meteor_score)
+        self.metrics["rouge"].append(rouge_score)
+
+        self.writer.add_scalars(f'metrics', {
+            'bleu1': mean(self.metrics["bleu1"]),
+            'bleu2': mean(self.metrics["bleu2"]),
+            'bleu3': mean(self.metrics["bleu3"]),
+            'bleu4': mean(self.metrics["bleu4"]),
+            'meteor': mean(self.metrics["meteor"]),
+            'rouge': mean(self.metrics["rouge"]),
+        }, self.current_epoch)
+
+        # reset
+        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
+
+        return {'val_loss': loss}
+
+    def validation_end(self, outputs):
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        tensorboard_logs = {'val_loss': avg_loss}
+        return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -178,10 +281,11 @@ class Litty(LightningModule):
     def train_dataloader(self):
         text2kp_train = TextKeypointsDataset(path_to_numpy_file=self.path_to_numpy_file_train,
                                              path_to_csv=self.path_to_csv_train,
-                                             path_to_vocab_file=self.path_to_vocab_file_all, input_length=self.input_size,
+                                             path_to_vocab_file=self.path_to_vocab_file_all,
+                                             input_length=self.input_size,
                                              transform=ToTensor(), kp_max_len=self.padding, text_max_len=self.padding)
         data_loader_train = torch.utils.data.DataLoader(text2kp_train, batch_size=self.batch_size, shuffle=True,
-                                                        num_workers=0)
+                                                        num_workers=self.num_workers)
         return data_loader_train
 
     def training_step(self, batch, batch_idx):
@@ -189,31 +293,8 @@ class Litty(LightningModule):
         source_tensor = source_tensor.permute(1, 0, 2)
         # source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
         target_tensor = target_tensor.view(-1)
-        target_tensor = target_tensor.type(torch.LongTensor).to(self.device)
+        target_tensor = target_tensor.type(torch.LongTensor).to(target_tensor.device)
 
-        # try:
-        #     source_tensor, target_tensor = batch
-        #     source_tensor = source_tensor.view(-1, self.batch_size, self.input_size).to(device)
-        #     target_tensor = target_tensor.view(-1)
-        #     target_tensor = target_tensor.type(torch.LongTensor).to(device)
-        # except RuntimeError as e:
-        #     with open('log.txt', 'a+') as f:
-        #         f.write(str(e))
-        #         f.write(traceback.format_exc())
-        #
-        #     with open("runtime_error.txt", "a+") as myfile:
-        #         myfile.write("\nrun:\n")
-        #         myfile.write(str(source_tensor.size()))
-        #         myfile.write("\n")
-        #         myfile.write(str(source_tensor))
-        #         myfile.write("\n")
-        #         myfile.write(str(target_tensor.size()))
-        #         myfile.write("\n")
-        #         myfile.write(str(target_tensor))
-        #         myfile.write("\n")
-        #         myfile.write(
-        #             str(DataUtils().int2text(target_tensor, DataUtils().vocab_int2word(self.path_to_vocab_file_all))))
-        #         myfile.write("\n")
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
         criterion = nn.CrossEntropyLoss(ignore_index=ignore_index)
 
@@ -221,16 +302,19 @@ class Litty(LightningModule):
         # print("target_tensor.size() %s" % str(target_tensor.size()))
         loss = criterion(output.view(-1, self.output_dim), target_tensor)
         # self.logger.summary.scalar('loss', loss)
-        logs = {'train_loss': loss}
-        return {'loss': loss, 'log': logs}
+        tensorboard_logs = {'train_loss': loss}
+        return {'loss': loss, 'log': tensorboard_logs}
 
 
 if __name__ == '__main__':
+    timestr = time.strftime("%Y-%m-%d_%H-%M")
+
     # set path to file containing all parameters
     if len(sys.argv) > 1:
         hparams_path = str(sys.argv[1])
     else:
         hparams_path = r"hparams.json"
-    model = Litty(hparams_path)
-    trainer = Trainer()
+    model = Litty(hparams_path, timestr)
+    # trainer = Trainer(gpus=2, num_nodes=1, distributed_backend='ddp')
+    trainer = Trainer(default_save_path=Path(model.save_model_folder_path) / timestr)
     trainer.fit(model)
