@@ -251,8 +251,8 @@ class VocabUtils:
                 # tokenize
                 doc = self.nlp(line)
                 sentence_tok = [token.text for token in doc]
-                print(line)
-                print(sentence_tok)
+                # print(line)
+                # print(sentence_tok)
                 for token in sentence_tok[1:]:
                     unique_words.add(token.lower())
 

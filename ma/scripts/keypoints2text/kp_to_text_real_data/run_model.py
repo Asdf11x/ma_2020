@@ -63,6 +63,7 @@ class RunModel:
         # model settings
         self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
         self.input_size = config["model_settings"]["input_size"]
+        self.output_size = config["model_settings"]["output_size"]  # output_dim != max_length. max_length == hidden_size
         self.hidden_size = config["model_settings"]["hidden_size"]
         self.num_layers = config["model_settings"]["num_layers"]
         self.max_length = config["model_settings"]["max_length"]
@@ -177,7 +178,6 @@ class RunModel:
         # TODO: get input_dim automatically?
         # TODO: crop max input_dim?
         # self.input_dim = config["padding"]["input_dim"]  # length of source keypoints
-        self.output_dim = config["padding"]["output_dim"]  # output_dim != max_length. max_length == hidden_size
         self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
         # Create new folder if no path to a model is specified
@@ -195,8 +195,8 @@ class RunModel:
                                                              num_workers=0)
 
         # vocab size, amount of different unique words
-        if self.output_dim == 0:
-            self.output_dim = DataUtils().get_file_length(self.path_to_vocab_file_all)
+        if self.output_size == 0:
+            self.output_size = DataUtils().get_file_length(self.path_to_vocab_file_all)
 
         # max length of source keypoints and target sentence
         if self.hidden_size == 0:
@@ -207,7 +207,7 @@ class RunModel:
                 self.hidden_size = max_len_source
             else:
                 self.hidden_size = max_len_target
-            with open('../tests_graphs/lengths.txt', 'w') as f:
+            with open('../quick_test/lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
 
@@ -246,20 +246,20 @@ class RunModel:
         # Do not initialize model, if its loaded from a file
         if self.load_model == 0:
             if self.model_type == "basic":
-                self.model = self.init_model(self.input_size, self.output_dim, self.hidden_size,
+                self.model = self.init_model(self.input_size, self.output_size, self.hidden_size,
                                              self.num_layers, self.SOS_token, self.EOS_token)
             elif self.model_type == "attn":
-                self.model = self.init_model_attn(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
+                self.model = self.init_model_attn(self.input_size, self.output_size, self.hidden_size, self.num_layers,
                                                   self.dropout, self.teacher_forcing_ratio, self.max_length,
                                                   self.bidir_encoder, self.SOS_token, self.EOS_token)
             elif self.model_type == "attn_batch":
-                self.model = self.init_model_attn_batch(self.input_size, self.output_dim, self.hidden_size,
+                self.model = self.init_model_attn_batch(self.input_size, self.output_size, self.hidden_size,
                                                         self.num_layers,
                                                         self.dropout, self.teacher_forcing_ratio, self.max_length,
                                                         self.bidir_encoder, self.batch_size, self.SOS_token,
                                                         self.EOS_token)
             elif self.model_type == "trans":
-                self.model = self.init_model_trans(self.input_size, self.output_dim, self.hidden_size, self.num_layers,
+                self.model = self.init_model_trans(self.input_size, self.output_size, self.hidden_size, self.num_layers,
                                                    self.nhead, self.dropout)
 
     def main(self):
@@ -319,9 +319,9 @@ class RunModel:
         model = Seq2Seq(encoder, decoder, device, teacher_forcing).to(device)
         return model
 
-    def init_model_trans(self, input_dim, output_dim, hidden_dim, num_layers, nhead, dropout):
-        ntokens = output_dim  # the size of vocabulary
-        emsize = input_dim  # embedding dimension
+    def init_model_trans(self, input_size, output_size, hidden_dim, num_layers, nhead, dropout):
+        ntokens = output_size  # the size of vocabulary
+        emsize = input_size  # embedding dimension
         nhid = hidden_dim  # the dimension of the feedforward network model in nn.TransformerEncoder
         nlayers = num_layers  # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
         nhead = nhead  # the number of heads in the multiheadattention models
@@ -339,8 +339,8 @@ class RunModel:
         self.model.train()
         lr = self.learning_rate
         model_optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, self.step_lr_each_nstep, gamma=self.step_lr_gamma)
-        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=self.reduceplt_lr_patience)
+        # scheduler = torch.optim.lr_scheduler.StepLR(model_optimizer, self.step_lr_each_nstep, gamma=self.step_lr_gamma)
+        scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, patience=self.reduceplt_lr_patience, min_lr=0.00001)
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
 
         # if self.model_type == "trans":
@@ -384,7 +384,7 @@ class RunModel:
             val_loss_show += val_loss
             val_loss_save += val_loss
 
-            scheduler.step()
+            # scheduler.step()
             # Note that step should be called after validate()
             scheduler_plat.step(val_loss)
 
@@ -537,7 +537,7 @@ class RunModel:
             if self.model_type == "trans":
                 output = self.model(source_tensor)
                 # print("target_tensor.size() %s" % str(target_tensor.size()))
-                loss = criterion(output.view(-1, self.output_dim), target_tensor)
+                loss = criterion(output.view(-1, self.output_size), target_tensor)
 
             elif self.model_type == "attn" or self.model_type == "attn_batch":
                 output = self.model(source_tensor, target_tensor)
@@ -575,7 +575,7 @@ class RunModel:
                 if self.model_type == "trans":
                     output = self.model(source_tensor)
                     # print("target_tensor.size() %s" % str(target_tensor.size()))
-                    loss = criterion(output.view(-1, self.output_dim), target_tensor)
+                    loss = criterion(output.view(-1, self.output_size), target_tensor)
                 elif self.model_type == "attn" or self.model_type == "attn_batch":
                     tf_temp = self.model.teacher_forcing
                     # turn off teacher forcing
@@ -615,10 +615,10 @@ class RunModel:
                         for item in sublist:
                             flat_list.append(item)
 
-                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
-                hypothesis = list(filter("<pad>".__ne__, hypothesis))
-                hypothesis = list(filter("<eos>".__ne__, hypothesis))
-                hyp_str = " ".join(hypothesis)
+                reference = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                reference = list(filter("<pad>".__ne__, reference))
+                reference = list(filter("<eos>".__ne__, reference))
+                ref_str = " ".join(reference)
 
                 decoded_words = []
                 if self.model_type == "trans":
@@ -634,11 +634,11 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                reference = DataUtils().int2text(decoded_words,
+                hypothesis = DataUtils().int2text(decoded_words,
                                                  DataUtils().vocab_int2word(self.path_to_vocab_file_all))
-                reference = list(filter("<pad>".__ne__, reference))
-                reference = list(filter("<eos>".__ne__, reference))
-                ref_str = " ".join(reference)
+                hypothesis = list(filter("<pad>".__ne__, hypothesis))
+                hypothesis = list(filter("<eos>".__ne__, hypothesis))
+                hyp_str = " ".join(hypothesis)
 
                 # if len(hypothesis) >= 4 or len(reference) >= 4:
                 # there may be several references
