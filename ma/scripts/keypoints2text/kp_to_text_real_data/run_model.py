@@ -615,10 +615,10 @@ class RunModel:
                         for item in sublist:
                             flat_list.append(item)
 
-                reference = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
-                reference = list(filter("<pad>".__ne__, reference))
-                reference = list(filter("<eos>".__ne__, reference))
-                ref_str = " ".join(reference)
+                hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                hypothesis = list(filter("<pad>".__ne__, hypothesis))
+                hypothesis = list(filter("<eos>".__ne__, hypothesis))
+                hyp_str = " ".join(hypothesis)
 
                 decoded_words = []
                 if self.model_type == "trans":
@@ -634,11 +634,11 @@ class RunModel:
                     else:
                         decoded_words.append(topi[0].item())
 
-                hypothesis = DataUtils().int2text(decoded_words,
+                reference = DataUtils().int2text(decoded_words,
                                                  DataUtils().vocab_int2word(self.path_to_vocab_file_all))
-                hypothesis = list(filter("<pad>".__ne__, hypothesis))
-                hypothesis = list(filter("<eos>".__ne__, hypothesis))
-                hyp_str = " ".join(hypothesis)
+                reference = list(filter("<pad>".__ne__, reference))
+                reference = list(filter("<eos>".__ne__, reference))
+                ref_str = " ".join(reference)
 
                 # if len(hypothesis) >= 4 or len(reference) >= 4:
                 # there may be several references

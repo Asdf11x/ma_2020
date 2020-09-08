@@ -180,7 +180,7 @@ class RunModel:
                 self.hidden_size = max_len_source
             else:
                 self.hidden_size = max_len_target
-            with open('../../tests_graphs/lengths.txt', 'w') as f:
+            with open('../../quick_test/lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
 

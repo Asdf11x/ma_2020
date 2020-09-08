@@ -28,7 +28,6 @@ from statistics import mean
 import math
 import shutil
 import traceback
-from jiwer import wer
 
 # use try/except -> local and server import differs
 try:
@@ -74,7 +73,6 @@ class Litty(LightningModule):
         # ____________________________________________________________________________________
         with open(hparams_path) as json_file:
             config = json.load(json_file)
-
         # model settings
         self.teacher_forcing_ratio = config["model_settings"]["teacher_forcing_ratio"]
         self.input_size = config["model_settings"]["input_size"]
@@ -155,12 +153,12 @@ class Litty(LightningModule):
         self.load_folder_path = config["save_load"]["load_folder_path"]
 
         if self.load_model:
-            self.current_folder = Path(self.load_folder_path)
+            self.current_folder = self.load_folder_path
         else:
             self.current_folder = Path(self.save_model_folder_path) / timestr
 
         self.writer = SummaryWriter(self.current_folder)
-        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": [], "wer": []}
+        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
         self.save_params(hparams_path, self.current_folder)
 
@@ -230,13 +228,13 @@ class Litty(LightningModule):
     def validation_step(self, batch, batch_idx):
         rouge = Rouge()
         source_tensor, target_tensor = batch
-        source_tensor_metrics = source_tensor[0]
-        source_tensor_metrics = source_tensor_metrics.view(self.padding, 1, self.input_size)
         source_tensor = source_tensor.permute(1, 0, 2)
-        target_tensor_metrics = target_tensor[0]
         target_tensor = target_tensor.view(-1)
         target_tensor = target_tensor.type(torch.LongTensor).to(target_tensor.device)
 
+        # ________
+        # COMPUTE LOSS
+        # ________
         output = self(source_tensor)
 
         ignore_index = DataUtils().text2index(["<pad>"], DataUtils().vocab_word2int(self.path_to_vocab_file_all))[0][0]
@@ -244,82 +242,107 @@ class Litty(LightningModule):
         loss = criterion(output.view(-1, self.output_size), target_tensor)
 
         # ________
-        # COMPUTING METRICS
+        # COMPUTE METRICS
         # ________
 
-        flat_list = []  # sentence representation in int
-        for sublist in target_tensor_metrics.tolist():
-            flat_list.append(sublist)
-        hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
-        hypothesis = list(filter("<pad>".__ne__, hypothesis))
-        hypothesis = list(filter("<eos>".__ne__, hypothesis))
-        hypothesis = list(filter("<sos>".__ne__, hypothesis))
-        hyp_str = " ".join(hypothesis)
+        # change from tensor to list
+        # e.g. torch.Size([8000])tensor([ 397, 1339, 2807,  ...,    0,    0,    0], device='cuda:0')
+        # to [ 397, 1339, 2807,  ...,    0,    0,    0]
+        target_tensor_list = target_tensor.tolist()  # sentence representation in int
 
-        decoded_words = []
-        output = self(source_tensor_metrics)
-        for ot in range(output.size(0)):
-            topv, topi = output[ot].topk(1)
-            if topi[0].item() == self.EOS_token:
-                decoded_words.append('<eos>')
-                break
-            else:
-                decoded_words.append(topi[0].item())
+        # compute metrics for each batch, but only for full batches, skip the last batch if not complete,
+        # because data doesnt fit completly
+        if len(target_tensor_list) == self.batch_size * self.padding:
+            for metrics_batch_index in range(self.batch_size):
+                # read only from first batch
+                decoded_words = []
 
-        reference = DataUtils().int2text(decoded_words,
-                                         DataUtils().vocab_int2word(self.path_to_vocab_file_all))
-        reference = list(filter("<pad>".__ne__, reference))
-        reference = list(filter("<eos>".__ne__, reference))
-        reference = list(filter("<sos>".__ne__, reference))
-        ref_str = " ".join(reference[:len(hypothesis)])
+                # cut batch in parts to compute metrics
+                # e.g. batch ~ [1,2,3,4,0,0,0,0,0,0,0,0,0,5,6,7,8,0,0,0,0,0,0.....]
+                # cut into parts:
+                # [1,2,3,4,0,0,0,0...] and [5,6,7,8,0,0,0,0,0....]
+                # use these parts for metrics to compare
+                # use mean score of all parts in one batch
+                target_tensor_list_part = target_tensor_list[metrics_batch_index * self.padding:(metrics_batch_index + 1) * self.padding]
+                hypothesis = DataUtils().int2text(target_tensor_list_part, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
+                hypothesis = list(filter("<pad>".__ne__, hypothesis))
+                hypothesis = list(filter("<eos>".__ne__, hypothesis))
+                hyp_str = " ".join(hypothesis)
 
-        with open('log_slr.txt', 'a') as f:
-            f.write(f"{hyp_str} {ref_str}\n")
+                # with open('log_batches.txt', 'a') as f:
+                #     f.write("target_tensor_list_part:\n")
+                #     f.write(str(target_tensor_list_part))
+                #     f.write("\n")
 
-        print(f"\nhyp_str: {hyp_str}")
-        print(f"ref_str: {ref_str}")
+                for ot in range(output.size(0)):
+                    topv, topi = output[ot][metrics_batch_index].topk(1)
+                    if topi[0].item() == self.EOS_token:
+                        decoded_words.append('<eos>')
+                        break
+                    else:
+                        decoded_words.append(topi[0].item())
 
-        # if len(hypothesis) >= 4 or len(reference) >= 4:
-        # there may be several references
-        bleu1_score = round(sentence_bleu([reference], hypothesis, weights=(1, 0, 0, 0)), 4)
-        bleu2_score = round(sentence_bleu([reference], hypothesis, weights=(0.5, 0.5, 0, 0)), 4)
-        bleu3_score = round(sentence_bleu([reference], hypothesis, weights=(0.33, 0.33, 0.33, 0)), 4)
-        bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
-        meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
-        wer_score = round(wer(hyp_str, ref_str), 4)
-        try:
-            rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
-        except ValueError:
-            rouge_score = 0.0
+                reference = DataUtils().int2text(decoded_words,
+                                                 DataUtils().vocab_int2word(self.path_to_vocab_file_all))
+                reference = list(filter("<pad>".__ne__, reference))
+                reference = list(filter("<eos>".__ne__, reference))
+                ref_str = " ".join(reference[:len(hypothesis)])
 
-        self.metrics["bleu1"].append(bleu1_score)
-        self.metrics["bleu2"].append(bleu2_score)
-        self.metrics["bleu3"].append(bleu3_score)
-        self.metrics["bleu4"].append(bleu4_score)
-        self.metrics["meteor"].append(meteor_score)
-        self.metrics["rouge"].append(rouge_score)
-        self.metrics["wer"].append(wer_score)
 
-        self.writer.add_scalars(f'metrics', {
-            'bleu1': mean(self.metrics["bleu1"]),
-            'bleu2': mean(self.metrics["bleu2"]),
-            'bleu3': mean(self.metrics["bleu3"]),
-            'bleu4': mean(self.metrics["bleu4"]),
-            'meteor': mean(self.metrics["meteor"]),
-            'rouge': mean(self.metrics["rouge"]),
-            'wer': mean(self.metrics["wer"]),
-        }, self.current_epoch)
 
-        self.writer.add_scalar('lr', self.learning_rate, self.current_epoch)
+                # print(f"\nhyp_str: {hyp_str}")
+                # print(f"ref_str: {ref_str}")
 
-        # reset
-        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": [], "wer":[]}
+                # if len(hypothesis) >= 4 or len(reference) >= 4:
+                # there may be several references
+                bleu1_score = round(sentence_bleu([reference], hypothesis, weights=(1, 0, 0, 0)), 4)
+                bleu2_score = round(sentence_bleu([reference], hypothesis, weights=(0.5, 0.5, 0, 0)), 4)
+                bleu3_score = round(sentence_bleu([reference], hypothesis, weights=(0.33, 0.33, 0.33, 0)), 4)
+                bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
+                meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
+                meteor_score = round(single_meteor_score("hallo wie geht es dir mir geht es gut", "hallo wie geht es so"), 4)
+                try:
+                    rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
+                except ValueError:
+                    rouge_score = 0.0
+
+                self.metrics["bleu1"].append(bleu1_score)
+                self.metrics["bleu2"].append(bleu2_score)
+                self.metrics["bleu3"].append(bleu3_score)
+                self.metrics["bleu4"].append(bleu4_score)
+                self.metrics["meteor"].append(meteor_score)
+                self.metrics["rouge"].append(rouge_score)
+
+                with open('log_batches.txt', 'a') as f:
+                    f.write("hyp_str:\n")
+                    f.write(str(hyp_str))
+                    f.write("\n")
+
+                    f.write("ref_str:\n")
+                    f.write(str(ref_str))
+                    f.write("\n")
+
+                    f.write("meteor_score:\n")
+                    f.write(str(meteor_score))
+                    f.write("\n")
+
+            self.writer.add_scalars(f'metrics', {
+                'bleu1': mean(self.metrics["bleu1"]),
+                'bleu2': mean(self.metrics["bleu2"]),
+                'bleu3': mean(self.metrics["bleu3"]),
+                'bleu4': mean(self.metrics["bleu4"]),
+                'meteor': mean(self.metrics["meteor"]),
+                'rouge': mean(self.metrics["rouge"]),
+            }, self.current_epoch)
+
+            self.writer.add_scalar('lr', self.learning_rate, self.current_epoch)
+
+            # reset
+            self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
         return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
-        with open('log_slr.txt', 'a') as f:
-            f.write(f"\n\n" + "---"*25 + "\n\n")
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': avg_loss}
         return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
@@ -372,8 +395,9 @@ if __name__ == '__main__':
             hparams_path = r"hparams.json"
         model = Litty(hparams_path, timestr)
         # trainer = Trainer(gpus=2, num_nodes=1, distributed_backend='ddp')
+
         if model.load_model == 1:
-            trainer = Trainer(gpus=1, default_save_path=Path(model.save_model_folder_path) / timestr, resume_from_checkpoint=model.load_model_path, min_epochs=model.num_iteration, max_epochs=model.num_iteration)
+            trainer = Trainer(gpus=1, default_save_path=Path(model.save_model_folder_path) / timestr, resume_from_checkpoint=model.save_model_file_path, min_epochs=model.num_iteration, max_epochs=model.num_iteration)
         else:
             trainer = Trainer(gpus=1, default_save_path=Path(model.save_model_folder_path) / timestr, min_epochs=model.num_iteration, max_epochs=model.num_iteration)
         trainer.fit(model)

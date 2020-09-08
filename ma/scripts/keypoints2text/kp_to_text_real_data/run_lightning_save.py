@@ -28,7 +28,6 @@ from statistics import mean
 import math
 import shutil
 import traceback
-from jiwer import wer
 
 # use try/except -> local and server import differs
 try:
@@ -160,7 +159,7 @@ class Litty(LightningModule):
             self.current_folder = Path(self.save_model_folder_path) / timestr
 
         self.writer = SummaryWriter(self.current_folder)
-        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": [], "wer": []}
+        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
         self.save_params(hparams_path, self.current_folder)
 
@@ -253,7 +252,6 @@ class Litty(LightningModule):
         hypothesis = DataUtils().int2text(flat_list, DataUtils().vocab_int2word(self.path_to_vocab_file_train))
         hypothesis = list(filter("<pad>".__ne__, hypothesis))
         hypothesis = list(filter("<eos>".__ne__, hypothesis))
-        hypothesis = list(filter("<sos>".__ne__, hypothesis))
         hyp_str = " ".join(hypothesis)
 
         decoded_words = []
@@ -270,11 +268,7 @@ class Litty(LightningModule):
                                          DataUtils().vocab_int2word(self.path_to_vocab_file_all))
         reference = list(filter("<pad>".__ne__, reference))
         reference = list(filter("<eos>".__ne__, reference))
-        reference = list(filter("<sos>".__ne__, reference))
         ref_str = " ".join(reference[:len(hypothesis)])
-
-        with open('log_slr.txt', 'a') as f:
-            f.write(f"{hyp_str} {ref_str}\n")
 
         print(f"\nhyp_str: {hyp_str}")
         print(f"ref_str: {ref_str}")
@@ -286,7 +280,6 @@ class Litty(LightningModule):
         bleu3_score = round(sentence_bleu([reference], hypothesis, weights=(0.33, 0.33, 0.33, 0)), 4)
         bleu4_score = round(sentence_bleu([reference], hypothesis, weights=(0.25, 0.25, 0.25, 0.25)), 4)
         meteor_score = round(single_meteor_score(ref_str, hyp_str), 4)
-        wer_score = round(wer(hyp_str, ref_str), 4)
         try:
             rouge_score = round(rouge.get_scores(hyp_str, ref_str)[0]["rouge-l"]["f"], 4)
         except ValueError:
@@ -298,7 +291,6 @@ class Litty(LightningModule):
         self.metrics["bleu4"].append(bleu4_score)
         self.metrics["meteor"].append(meteor_score)
         self.metrics["rouge"].append(rouge_score)
-        self.metrics["wer"].append(wer_score)
 
         self.writer.add_scalars(f'metrics', {
             'bleu1': mean(self.metrics["bleu1"]),
@@ -307,19 +299,16 @@ class Litty(LightningModule):
             'bleu4': mean(self.metrics["bleu4"]),
             'meteor': mean(self.metrics["meteor"]),
             'rouge': mean(self.metrics["rouge"]),
-            'wer': mean(self.metrics["wer"]),
         }, self.current_epoch)
 
         self.writer.add_scalar('lr', self.learning_rate, self.current_epoch)
 
         # reset
-        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": [], "wer":[]}
+        self.metrics = {"bleu1": [], "bleu2": [], "bleu3": [], "bleu4": [], "meteor": [], "rouge": []}
 
         return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
-        with open('log_slr.txt', 'a') as f:
-            f.write(f"\n\n" + "---"*25 + "\n\n")
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': avg_loss}
         return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}

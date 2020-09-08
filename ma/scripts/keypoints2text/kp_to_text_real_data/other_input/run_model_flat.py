@@ -147,7 +147,7 @@ class RunModel:
         if self.hidden_size_enc == 0 or self.hidden_size_dec == 0:
             print("Searching for source and target max length")
             self.hidden_size_enc, self.hidden_size_dec, lengths = DataUtils().get_kp_text_max_lengths(self.data_loader_train, self.data_loader_train, self.data_loader_train)
-            with open('../../tests_graphs/lengths.txt', 'w') as f:
+            with open('../../quick_test/lengths.txt', 'w') as f:
                 for item in lengths:
                     f.write("%s\n" % item)
 

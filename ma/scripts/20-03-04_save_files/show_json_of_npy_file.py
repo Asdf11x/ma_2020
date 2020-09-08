@@ -8,7 +8,7 @@ old = np.load
 np.load = lambda *a, **k: old(*a, **k, allow_pickle=True)
 
 # path_to_numpy_files = Path(sys.argv[1])
-path_to_numpy_files = Path(r"C:\Users\Asdf\Downloads\How2Sign_samples")
+path_to_numpy_files = Path(r"C:\Users\Asdf\Desktop\testy")
 numpy_files = [pos_json for pos_json in os.listdir(path_to_numpy_files) if pos_json.endswith('.npy')]
 
 process = psutil.Process(os.getpid())
@@ -25,6 +25,14 @@ def load(path_to_numpy_file, file_name):
     print("Current memory usage: %s megabytes" % str(process.memory_info().rss / 1000000))  # divided to get mb
     file_name = os.path.splitext(file_name)[0] + ".json"
 
+    # print keys
+    with open('content.txt', 'w+') as f:
+        for key in all_files_dictionary.keys():
+            f.write(str(key))
+            f.write("\n")
+
+
+    print(file_name)
     jsonFile = open(file_name, "w+")
     jsonFile.write(json.dumps(all_files_dictionary))
     jsonFile.close()

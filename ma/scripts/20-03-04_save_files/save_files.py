@@ -1,4 +1,8 @@
-"""save_files.py: save json files in a single numpy file"""
+"""save_files.py: save json files in a single numpy file
+
+use batches to save the files into numpy file.
+"batches": Create a txt file on the side which contains all folder names and this file is processed in batches
+"""
 
 import json
 import os
