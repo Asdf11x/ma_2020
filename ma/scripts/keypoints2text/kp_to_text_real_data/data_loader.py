@@ -131,12 +131,6 @@ class TextKeypointsDataset(data.Dataset):
             else:
                 index = random.randint(0, self.amount_of_files - 2)
 
-        #with open('contents.txt', 'a') as f:
-        #    f.write(str(subdirectory))
-        #    f.write("\n")
-        #    f.write(str(index))
-        #    f.write("\n")
-
         # keypoints padding
         # check if padding is activated (kp_max_len must be greater than 0)
         if self.kp_max_len > 0:
@@ -152,12 +146,6 @@ class TextKeypointsDataset(data.Dataset):
 
         else:
             keys = keys_per_folder
-
-        #with open('contents.txt', 'a') as f:
-        #    f.write(str(subdirectory))
-        #    f.write(" - ")
-        #    f.write(str(index))
-        #    f.write("\n")
 
         # load sentences
         # take the sentence column of .csv file and the word2int representation
